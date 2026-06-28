@@ -1,2 +1,5 @@
 # remctl auto-completions setup by script
 dot_zsh/completions/_remctl
+
+# agents work-in-progress (not ready for sync)
+dot_config/agents/wip-skills/
