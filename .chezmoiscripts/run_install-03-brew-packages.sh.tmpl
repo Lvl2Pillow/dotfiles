@@ -34,6 +34,10 @@ if ! brew list --formula fnm &>/dev/null; then
     brew install fnm
 fi
 
+if ! brew list --formula uv &>/dev/null; then
+    brew install uv
+fi
+
 {{ if (default false .install_opencode) -}}
 if ! brew list --formula opencode &>/dev/null; then
     brew install opencode
