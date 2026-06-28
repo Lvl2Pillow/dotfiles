@@ -1,0 +1,2 @@
+# Per-machine overrides go in ~/.config/chezmoi/chezmoi.toml under [data].
+install_opencode = false

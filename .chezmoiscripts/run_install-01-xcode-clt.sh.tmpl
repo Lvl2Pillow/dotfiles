@@ -1,0 +1,32 @@
+{{ if eq .chezmoi.os "darwin" -}}
+#!/bin/bash
+set -euo pipefail
+
+if xcode-select -p &>/dev/null; then
+    echo "Xcode CLT already installed. Skipping."
+    exit 0
+fi
+
+echo "Installing Xcode Command Line Tools..."
+xcode-select --install 2>/dev/null || true
+
+# Wait up to ~5 mins
+for _ in $(seq 1 300); do
+    if xcode-select -p &>/dev/null; then
+        echo "Xcode CLT installed."
+        exit 0
+    fi
+    if ! pgrep -q "Install Command Line" 2>/dev/null; then
+        sleep 2
+        if ! xcode-select -p &>/dev/null; then
+            echo "Xcode CLT installation cancelled or failed."
+            echo "Run manually: xcode-select --install"
+            exit 1
+        fi
+    fi
+    sleep 1
+done
+
+echo "Xcode CLT installation timed out."
+exit 1
+{{ end -}}
