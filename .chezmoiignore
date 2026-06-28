@@ -1,0 +1,2 @@
+# remctl auto-completions setup during install
+dot_config/zsh/completions/_remctl
