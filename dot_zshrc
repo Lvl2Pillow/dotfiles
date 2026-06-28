@@ -1,4 +1,4 @@
 # .zshrc split into modules for readability
-for module in $HOME/.config/zsh/*.zsh(N); do
+for module in $HOME/.zsh/*.zsh(N); do
   source "$module"
 done
