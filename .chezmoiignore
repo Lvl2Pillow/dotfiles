@@ -3,3 +3,6 @@ dot_zsh/completions/_remctl
 
 # agents work-in-progress (not ready for sync)
 dot_config/agents/wip-skills/
+
+# prompt tests live in git but don't need to be applied to ~/.zsh/
+.zsh/tests/
