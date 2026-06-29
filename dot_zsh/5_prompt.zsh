@@ -103,12 +103,17 @@ function _prompt_truncate_branch() {
 }
 
 function _prompt_precmd() {
+  local last_exit=$?  # capture exit status before anything changes it
   local MIN_DIR=36
   local MIN_BRANCH=40
   # MIN_TOTAL = 36 + space + 40 + space + symbol + space = 80
 
   local DIR_COLOR='%F{39}'  # bright sky-blue  (#00afff)
   local BRANCH_COLOR='%F{135}' # medium-orchid purple (#af5fff)
+  local SYMBOL_COLOR=''  # default foreground (white) on success
+  if (( last_exit )); then
+    SYMBOL_COLOR='%F{196}'  # bright red (#ff0000) on failure
+  fi
 
   local columns=80
   local extra=0
@@ -142,9 +147,9 @@ function _prompt_precmd() {
   if [[ -n "$branch_raw" ]]; then
     _prompt_truncate_branch "$branch_raw" "$branch_cap"
     local branch_sanitized="${_prompt_branch_out//\%/%%}"
-    PROMPT="${DIR_COLOR}${dir_sanitized}%f ${BRANCH_COLOR}${branch_sanitized}%f %(#.#.%%) "
+    PROMPT="${DIR_COLOR}${dir_sanitized}%f ${BRANCH_COLOR}${branch_sanitized}%f ${SYMBOL_COLOR}%(#.#.%%)%f "
   else
-    PROMPT="${DIR_COLOR}${dir_sanitized}%f %(#.#.%%) "
+    PROMPT="${DIR_COLOR}${dir_sanitized}%f ${SYMBOL_COLOR}%(#.#.%%)%f "
   fi
 }
 
