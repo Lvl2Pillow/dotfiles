@@ -1,0 +1,35 @@
+{{ if eq .chezmoi.os "darwin" -}}
+#!/bin/bash
+set -euo pipefail
+export HOMEBREW_NO_AUTO_UPDATE=1
+
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+if ! command -v uv &>/dev/null; then
+    echo "uv not found — skipping uv tool installs"
+    exit 0
+fi
+
+echo "=== uv tools ==="
+
+# MLflow — pinned to Python 3.12
+# (Traversable removed from importlib.abc in 3.14; mlflow still imports it)
+{{ if (default false .install_opencode) -}}
+if ! uv tool list | grep -q "^mlflow "; then
+    uv tool install --python 3.12 mlflow
+fi
+{{ end -}}
+
+# Semble
+if ! uv tool list | grep -q "^semble "; then
+    uv tool install semble
+    echo "  → Run 'semble install' manually for interactive agent setup"
+fi
+
+# Future tools: add with the same pattern
+#   if ! uv tool list | grep -q "^<name> "; then
+#       uv tool install <name>
+#   fi
+
+echo "Done."
+{{ end -}}

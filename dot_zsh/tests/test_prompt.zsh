@@ -1,5 +1,4 @@
 #!/usr/bin/env zsh
-# Unit tests for 5_prompt.zsh
 # Run: zsh test_prompt.zsh
 
 source "${0:h}/../5_prompt.zsh"
