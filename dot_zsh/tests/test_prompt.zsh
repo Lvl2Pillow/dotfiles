@@ -321,21 +321,21 @@ run_precmd() {
 
 # 1. No git dir, exit 0
 run_precmd 0 "" "$nogit_dir"
-assert "$PROMPT" "%F{39}${nogit_dir}%f %(#.#.%%)%f " "precmd: no git, exit 0"
+assert "$PROMPT" "%F{135}${nogit_dir}%f %(#.#.%%)%f " "precmd: no git, exit 0"
 
 # 2. No git dir, exit 1
 run_precmd 1 "" "$nogit_dir"
-assert "$PROMPT" "%F{39}${nogit_dir}%f %F{196}%(#.#.%%)%f " "precmd: no git, exit 1"
+assert "$PROMPT" "%F{135}${nogit_dir}%f %F{196}%(#.#.%%)%f " "precmd: no git, exit 1"
 
 # 3. Git dir with branch, exit 0
 local prompt_git="$TMPDIR/prompt_git"
 setup_git_repo "$prompt_git"
 run_precmd 0 "" "$prompt_git"
-assert "$PROMPT" "%F{39}${prompt_git}%f %F{135}main%f %(#.#.%%)%f " "precmd: git branch, exit 0"
+assert "$PROMPT" "%F{135}${prompt_git}%f %F{39}main%f %(#.#.%%)%f " "precmd: git branch, exit 0"
 
 # 4. Git dir with branch, exit 1
 run_precmd 1 "" "$prompt_git"
-assert "$PROMPT" "%F{39}${prompt_git}%f %F{135}main%f %F{196}%(#.#.%%)%f " "precmd: git branch, exit 1"
+assert "$PROMPT" "%F{135}${prompt_git}%f %F{39}main%f %F{196}%(#.#.%%)%f " "precmd: git branch, exit 1"
 
 # 5. HOME ~ substitution
 local home_dir="$TMPDIR/home_test"
@@ -347,7 +347,7 @@ reset_globals
 unset COLUMNS
 :
 _prompt_precmd
-assert "$PROMPT" "%F{39}~/subdir%f %(#.#.%%)%f " "precmd: HOME ~ substitution"
+assert "$PROMPT" "%F{135}~/subdir%f %(#.#.%%)%f " "precmd: HOME ~ substitution"
 popd -q
 HOME="$saved_home"
 
@@ -358,7 +358,7 @@ mkdir -p "$percent_dir"
 run_precmd 0 "" "$percent_dir"
 # The path d%p has one % literal which becomes %% in the prompt
 local expected_dir="${TMPDIR}/d%%p"
-assert "$PROMPT" "%F{39}${expected_dir}%f %(#.#.%%)%f " "precmd: %-escaping in dir name"
+assert "$PROMPT" "%F{135}${expected_dir}%f %(#.#.%%)%f " "precmd: %-escaping in dir name"
 
 # 7. Wide terminal (COLUMNS=120, short branch, long dir) — extra goes to dir
 #    extra = 40, branch "main" (4 chars) uses 0 extra, dir_cap = 36+40 = 76
@@ -373,7 +373,7 @@ else
   run_precmd 0 "120" "$wide_dir"
   # With COLUMNS=120: dir_cap=76, branch "main"=4 chars, all extra to dir
   # Path fits in 76 -> not truncated
-  assert "$PROMPT" "%F{39}${wide_dir}%f %F{135}main%f %(#.#.%%)%f " "precmd: wide terminal, extra to dir"
+  assert "$PROMPT" "%F{135}${wide_dir}%f %F{39}main%f %(#.#.%%)%f " "precmd: wide terminal, extra to dir"
 fi
 
 # 8. Tight terminal (COLUMNS=69, long branch) — branch truncated
@@ -388,7 +388,7 @@ COLUMNS=69
 :
 _prompt_precmd
 local expected_branch="very-long-feature-branch-name-fo...poses"
-assert "$PROMPT" "%F{39}${tight_repo}%f %F{135}${expected_branch}%f %(#.#.%%)%f " "precmd: tight terminal, branch truncated"
+assert "$PROMPT" "%F{135}${tight_repo}%f %F{39}${expected_branch}%f %(#.#.%%)%f " "precmd: tight terminal, branch truncated"
 popd -q
 
 # 9. Detached HEAD in prompt -> @sha7
@@ -405,7 +405,7 @@ _prompt_precmd
 _prompt_truncate_dir "$detached_repo" 36
 local sanitized_dir="${_prompt_dir_out//\%/%%}"
 local expected_detached_branch="@${sha_detached:0:7}"
-assert "$PROMPT" "%F{39}${sanitized_dir}%f %F{135}${expected_detached_branch}%f %(#.#.%%)%f " "precmd: detached HEAD"
+assert "$PROMPT" "%F{135}${sanitized_dir}%f %F{39}${expected_detached_branch}%f %(#.#.%%)%f " "precmd: detached HEAD"
 popd -q
 
 # 10. Root dir /
@@ -414,7 +414,7 @@ reset_globals
 unset COLUMNS
 :
 _prompt_precmd
-assert "$PROMPT" "%F{39}/%f %(#.#.%%)%f " "precmd: root dir /"
+assert "$PROMPT" "%F{135}/%f %(#.#.%%)%f " "precmd: root dir /"
 popd -q
 
 # ===================================================================

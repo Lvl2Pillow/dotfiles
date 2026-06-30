@@ -108,8 +108,8 @@ function _prompt_precmd() {
   local MIN_BRANCH=40
   # MIN_TOTAL = 36 + space + 40 + space + symbol + space = 80
 
-  local DIR_COLOR='%F{39}'  # bright sky-blue  (#00afff)
-  local BRANCH_COLOR='%F{135}' # medium-orchid purple (#af5fff)
+  local DIR_COLOR='%F{135}'  # purple (#af5fff)
+  local BRANCH_COLOR='%F{39}' # sky-blue (#00afff)
   local SYMBOL_COLOR=''  # default foreground (white) on success
   if (( last_exit )); then
     SYMBOL_COLOR='%F{196}'  # bright red (#ff0000) on failure
