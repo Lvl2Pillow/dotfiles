@@ -6,4 +6,4 @@ typeset -U path
 export PATH
 
 # pretty ls colors
-export LSCOLORS='ExexcxcxBxgxfxbxbadxdx'
+export LSCOLORS='GxFxCxExBxGxFxBxBxCxEx'

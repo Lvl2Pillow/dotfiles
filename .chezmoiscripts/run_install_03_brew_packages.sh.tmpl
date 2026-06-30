@@ -14,6 +14,7 @@ pkg_installed() { echo "$installed" | grep -qxF "$1"; }
 tap_installed()  { echo "$taps" | grep -qxF "$1"; }
 
 if ! pkg_installed fzf; then brew install fzf; fi
+if ! pkg_installed thefuck; then brew install thefuck; fi
 if ! pkg_installed bun; then brew install bun; fi
 if ! pkg_installed playwright-cli; then brew install playwright-cli; fi
 
