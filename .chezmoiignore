@@ -2,7 +2,7 @@
 .zsh/completions/_remctl
 
 # agents work-in-progress (not ready for sync)
-.config/agents/wip-skills/
+.agents/wip-skills/
 
 # test directories: keep in git, don't apply to live filesystem
 **/tests/

@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-source "${0:h}/../5_prompt.zsh"
+source "${0:h}/../05_prompt.zsh"
 
 local tests=0 passed=0 failed=0
 
