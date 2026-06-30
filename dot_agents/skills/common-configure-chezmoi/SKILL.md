@@ -197,6 +197,8 @@ Encrypted files get `encrypted_` attribute. Transparently decrypted during edit,
 
 ## 9. Verification workflow
 
+> **Sole-owner repo:** This is a personal chezmoi repo — no other contributors. Commit directly to `main`. No branching needed. Skip the "create a branch" rule from AGENTS.md.
+
 **Never run `chezmoi apply` (without `-n`).** Only create scripts and dry-run. Let user review and apply.
 
 1. `chezmoi diff` — show changes
