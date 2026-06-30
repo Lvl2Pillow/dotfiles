@@ -1,4 +1,4 @@
-fpath=($HOME/.config/zsh/completions $fpath)
+fpath=($HOME/.zsh/completions $fpath)
 
 ZSH_COMPDUMP="${ZDOTDIR:-$HOME}/.zcompdump"
 
