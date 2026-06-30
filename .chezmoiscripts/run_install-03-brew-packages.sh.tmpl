@@ -7,6 +7,10 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 
 echo "=== Brew packages ==="
 
+if ! brew list --formula fzf &>/dev/null; then
+    brew install fzf
+fi
+
 if ! brew list --formula bun &>/dev/null; then
     brew install bun
 fi

@@ -1,4 +1,5 @@
 # Performance optimized custom prompt: <dir> <git_branch> <symbol>
+# No child processes, no git status calls (keeps prompt <1ms).
 
 _prompt_is_git_cache=0
 _prompt_git_dir_cache=""
@@ -6,7 +7,7 @@ _prompt_dir_cache=""
 _prompt_branch_out=""
 _prompt_dir_out=""
 
-# find .git manually to avoid expensive git commands
+# manually walk up tree to find .git/
 function _prompt_find_git() {
   if [[ "$PWD" == "$_prompt_dir_cache" ]]; then
     if (( _prompt_is_git_cache )); then
@@ -97,7 +98,6 @@ function _prompt_truncate_branch() {
 
   local ending="${branch: -5}"
   local beginning_len=$(( branch_cap - 8 ))
-
   local beginning="${branch:0:$beginning_len}"
   _prompt_branch_out="${beginning}...${ending}"
 }
@@ -115,11 +115,9 @@ function _prompt_precmd() {
     SYMBOL_COLOR='%F{196}'  # bright red (#ff0000) on failure
   fi
 
-  local columns=80
   local extra=0
   if [[ -n "$COLUMNS" ]]; then
-      columns=$COLUMNS
-      extra=$(( columns > 80 ? columns - 80 : 0 ))
+      local extra=$(( $COLUMNS > 80 ? $COLUMNS - 80 : 0 ))
   fi
 
   local branch_raw=""
