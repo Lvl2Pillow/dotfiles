@@ -14,7 +14,7 @@ echo "=== uv tools ==="
 
 # MLflow — pinned to Python 3.12
 # (Traversable removed from importlib.abc in 3.14; mlflow still imports it)
-{{ if (default false .install_opencode) -}}
+{{ if .should_install_opencode -}}
 if ! uv tool list | grep -q "^mlflow "; then
     uv tool install --python 3.12 mlflow
 fi

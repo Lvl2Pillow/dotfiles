@@ -42,7 +42,7 @@ if ! brew list --formula uv &>/dev/null; then
     brew install uv
 fi
 
-{{ if (default false .install_opencode) -}}
+{{ if .should_install_opencode -}}
 if ! brew list --formula opencode &>/dev/null; then
     brew install opencode
 fi

@@ -183,6 +183,8 @@ chezmoi data                          # view all template data
 chezmoi execute-template '{{ .chezmoi.os }}'  # test snippet
 ```
 
+> **⚠️ Never put PII (name, email, API keys, passwords) in `.chezmoidata.*` files** — they are tracked in git and pushed to the remote repo. Use `promptStringOnce` (stores in local state DB, never git) or `~/.config/chezmoi/chezmoi.toml` `[data]` section (local config, not tracked).
+
 ## 8. Encryption
 
 ```bash
