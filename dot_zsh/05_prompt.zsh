@@ -1,4 +1,5 @@
-# No child processes, and async branch staged / unstaged + zle -F for prompt redraw (keeps prompt <1ms).
+# Performant prompt using async + SIGUSR1 for instant redraw.
+# <working_dir> <git_branch> <symbol>
 
 _prompt_is_git_cache=0
 _prompt_git_dir_cache=""
@@ -9,15 +10,8 @@ _prompt_git_staged=0
 _prompt_git_unstaged=0
 _prompt_git_last_pid=0
 _prompt_async_counter=0
-_prompt_fifo_fd=0
-_prompt_fifo="/tmp/prompt_fifo_$$"
-_prompt_fifo_out="/tmp/prompt_fifo_out_$$"
+_prompt_async_out="/tmp/prompt_async_out_$$"
 _prompt_rendering=0
-
-# setup notification FIFO
-rm -f $_prompt_fifo
-mkfifo $_prompt_fifo
-exec {_prompt_fifo_fd} <> $_prompt_fifo
 
 # manually walk up tree to find .git/
 function _prompt_find_git() {
@@ -82,39 +76,9 @@ function _prompt_git_branch() {
       # detached HEAD
     _prompt_branch_out="@${git_head:0:7}"
   fi
+  return 0
 }
 
-function _prompt_async_git_start() {
-  [[ $_prompt_git_last_pid -gt 0 ]] && kill $_prompt_git_last_pid 2>/dev/null
-  _prompt_async_counter=$(( _prompt_async_counter + 1 ))
-  (
-    cd "$1" 2>/dev/null || exit
-    local staged=0
-    local unstaged=0
-    git diff-index --cached --quiet HEAD 2>/dev/null || staged=1
-    git --no-optional-locks diff-files --quiet 2>/dev/null || unstaged=1
-    echo "$staged|$unstaged|$_prompt_async_counter" > "$_prompt_fifo_out"
-    echo > "$_prompt_fifo"
-  ) &!
-  _prompt_git_last_pid=$!
-}
-
-# zle -F handler - fires when async result arrives
-function _prompt_git_on_notify() {
-  local dummy
-  read -r dummy <&$_prompt_fifo_fd 2>/dev/null || return
-  [[ ! -f $_prompt_fifo_out ]] && return
-  local line
-  IFS= read -r line <$_prompt_fifo_out || return
-  local parts=("${(@s:|:)line}")
-  [[ $parts[3] != $_prompt_async_counter ]] && return   # stale
-  _prompt_git_staged=$parts[1]
-  _prompt_git_unstaged=$parts[2]
-  _prompt_rendering=1
-  _prompt_precmd
-  _prompt_rendering=0
-  zle .reset-prompt
-}
 function _prompt_truncate_dir() {
   local dir_raw="$1"
   local dir_cap="$2"
@@ -145,18 +109,54 @@ function _prompt_truncate_branch() {
   _prompt_branch_out="${beginning}...${ending}"
 }
 
+function _prompt_async_git_start() {
+  [[ $_prompt_git_last_pid -gt 0 ]] && kill $_prompt_git_last_pid 2>/dev/null
+  _prompt_async_counter=$(( _prompt_async_counter + 1 ))
+  (
+    cd "$1" 2>/dev/null || exit
+    local staged=0
+    local unstaged=0
+    git diff-index --cached --quiet HEAD 2>/dev/null || staged=1
+    git --no-optional-locks diff-files --quiet 2>/dev/null || unstaged=1
+    echo "$staged|$unstaged|$_prompt_async_counter" > "${_prompt_async_out}_volatile"
+    mv "${_prompt_async_out}_volatile" "$_prompt_async_out"
+    # signal parent to redraw prompt immediately
+    kill -s USR1 $$ 2>/dev/null
+  ) &!
+  _prompt_git_last_pid=$!
+}
+
+# consume async result file if it exists
+function _prompt_signal_handler() {
+  [[ ! -f $_prompt_async_out ]] && return
+  local line
+  IFS= read -r line < "$_prompt_async_out" || return
+  rm -f "$_prompt_async_out"
+  local parts=("${(@s:|:)line}")
+  [[ $parts[3] != $_prompt_async_counter ]] && return   # stale
+  _prompt_git_staged=$parts[1]
+  _prompt_git_unstaged=$parts[2]
+}
+
+TRAPUSR1() {
+  _prompt_rendering=1
+  _prompt_precmd
+  _prompt_rendering=0
+  zle .reset-prompt 2>/dev/null
+}
+
 autoload -Uz add-zsh-hook
+
 _prompt_precmd() {
   local last_exit=$?  # capture exit status before anything changes it
 
-  # register handler
-  zle -F $_prompt_fifo_fd _prompt_git_on_notify 2>/dev/null
+  _prompt_signal_handler
 
   local MIN_DIR=36
   local MIN_BRANCH=40
   # MIN_TOTAL = 36 + space + 40 + space + symbol + space = 80
 
-  local DIR_COLOR='%F{135}'     # purple (#af5fff)
+  local DIR_COLOR='%F{135}'     # purple
   local BRANCH_COLOR='%F{076}'  # green — clean (default)
   if (( _prompt_git_unstaged )); then
     BRANCH_COLOR='%F{178}'      # yellow — unstaged (highest priority)
@@ -208,9 +208,7 @@ add-zsh-hook precmd _prompt_precmd
 
 # cleanup on exit - removes FIFO, kills worker, no "bg running" warning
 _prompt_cleanup() {
-  zle -F $_prompt_fifo_fd 2>/dev/null
-  exec {_prompt_fifo_fd} >&-
-  rm -f $_prompt_fifo $_prompt_fifo_out
+  rm -f $_prompt_async_out "${_prompt_async_out}_volatile"
   [[ $_prompt_git_last_pid -gt 0 ]] && kill $_prompt_git_last_pid 2>/dev/null
 }
 add-zsh-hook zshexit _prompt_cleanup

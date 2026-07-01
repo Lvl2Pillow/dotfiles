@@ -6,3 +6,6 @@
 
 # test directories: keep in git, don't apply to live filesystem
 **/tests/
+
+# README stays with git only
+README
