@@ -1,114 +1,219 @@
 #!/bin/bash
-set -euo pipefail
-
 # After chezmoi apply, check for stale files in $HOME whose source entries
-# were deleted / moved from the chezmoi git repo. Prompts before cleanup.
+# were deleted / moved from the chezmoi git repo. Prompts before clean up.
+#
+# Attribute parsing faithfully ports chezmoi's source-state attribute rules
+# (https://www.chezmoi.io/reference/source-state-attributes/) so that every
+# prefix (dot_, empty_, encrypted_, etc.) and suffix (.tmpl, .literal, etc.)
+# is mapped to the correct target path. The chezmoi binary is intentionally
+# never invoked: doing so during apply would deadlock on the state lock.
+#
+# Functions are defined such that this file can be sourced by the unit
+# tests. The destructive main logic is guarded behind a flag IS_TEST being
+# unset.
+#
+# Limitations: Does not factor in interactions with .chezmoiignore or
+# .gitignore. Parsing these files is quite complex and actual real impact
+# should be quite rare.
 
-INTERACTIVE=false
-if [ -t 0 ] && [ -t 1 ]; then
-    INTERACTIVE=true
-fi
-
-# chezmoi source directory is hardcoded to avoid calling `chezmoi` during apply
-# which would cause a state lock error
-SOURCE_DIR="$HOME/.local/share/chezmoi"
-cd "$SOURCE_DIR" 2>/dev/null || exit 0
-[ -d ".git" ] || exit 0
-
-# Map a chezmoi source-relative path to an absolute target path
-get_target_path() {
-    local src="$1" t="${1%.tmpl}"
-    local first="${t%%/*}"
-    local rest="${t#$first}"
-    local dot=0
+parse_dir_name() {
+    local name="$1"
     while :; do
-        case "$first" in
-            dot_*)
-                first="${first#dot_}"; dot=1; continue ;;
-            create_*|empty_*|encrypted_*|executable_*|exact_*|literal_*|modify_*|once_*|private_*|run_*|symlink_*)
-                first="${first#*_}"; continue ;;
+        case "$name" in
+            remove_*)   name="${name#remove_}" ;;
+            external_*) name="${name#external_}" ;;
+            exact_*)    name="${name#exact_}" ;;
+            private_*)  name="${name#private_}" ;;
+            readonly_*) name="${name#readonly_}" ;;
+            *) break ;;
         esac
-        break
     done
-    [ "$dot" -eq 1 ] && first=".$first"
-    printf '%s' "$first$rest"
+    case "$name" in
+        dot_*)     printf '.%s' "${name#dot_}" ;;
+        literal_*) printf '%s' "${name#literal_}" ;;
+        *)         printf '%s' "$name" ;;
+    esac
 }
 
-STALE_FILE="${TMPDIR:-/tmp}/chezmoi-cleanup-stale-$$.txt"
-trap 'rm -f "$STALE_FILE"' EXIT
-: > "$STALE_FILE"
+parse_file_name() {
+    local name="$1" encrypted=0 name_prefix=""
+    case "$name" in
+        create_*)
+            name="${name#create_}"
+            case "$name" in encrypted_*)  name="${name#encrypted_}";  encrypted=1 ;; esac
+            case "$name" in private_*)    name="${name#private_}" ;; esac
+            case "$name" in readonly_*)   name="${name#readonly_}" ;; esac
+            case "$name" in empty_*)      name="${name#empty_}" ;; esac
+            case "$name" in executable_*) name="${name#executable_}" ;; esac
+            ;;
+        remove_*)
+            # remove_ instructs chezmoi to delete a target; it manages no
+            # file, so it has no stale target to clean up.
+            return 1
+            ;;
+        run_*)
+            # Scripts (run_, run_once_, run_onchange_, with optional
+            # before_/after_) produce no managed target file.
+            return 1
+            ;;
+        symlink_*)
+            name="${name#symlink_}"
+            ;;
+        modify_*)
+            name="${name#modify_}"
+            case "$name" in encrypted_*)  name="${name#encrypted_}";  encrypted=1 ;; esac
+            case "$name" in private_*)    name="${name#private_}" ;; esac
+            case "$name" in readonly_*)   name="${name#readonly_}" ;; esac
+            case "$name" in executable_*) name="${name#executable_}" ;; esac
+            ;;
+        *)
+            case "$name" in encrypted_*)  name="${name#encrypted_}";  encrypted=1 ;; esac
+            case "$name" in private_*)    name="${name#private_}" ;; esac
+            case "$name" in readonly_*)   name="${name#readonly_}" ;; esac
+            case "$name" in empty_*)      name="${name#empty_}" ;; esac
+            case "$name" in executable_*) name="${name#executable_}" ;; esac
+            ;;
+    esac
+    case "$name" in
+        dot_*)     name_prefix="."; name="${name#dot_}" ;;
+        literal_*) name="${name#literal_}" ;;
+    esac
+    # The encryption suffix is stripped only when the encrypted_ attribute is
+    # present; a literal .age/.asc on a non-encrypted file is part of the name.
+    if [ "$encrypted" -eq 1 ]; then
+        case "$name" in
+            *.age) name="${name%.age}" ;;
+            *.asc) name="${name%.asc}" ;;
+        esac
+    fi
+    # .literal stops suffix parsing; .tmpl is stripped and may be followed by
+    # a trailing .literal which is also stripped.
+    case "$name" in
+        *.literal) name="${name%.literal}" ;;
+        *.tmpl)
+            name="${name%.tmpl}"
+            case "$name" in *.literal) name="${name%.literal}" ;; esac
+            ;;
+    esac
+    [ -n "$name" ] || return 1
+    printf '%s' "${name_prefix}${name}"
+}
 
-CACHE="$SOURCE_DIR/.chezmoi-cleanup-cache"
-LAST_SHA=""
-if [ -f "$CACHE" ]; then
-    LAST_SHA=$(head -1 "$CACHE")
-fi
-CURRENT_SHA=$(git rev-parse HEAD 2>/dev/null || true)
+# Map a chezmoi source-relative path to a target-relative path (relative to
+# $HOME). Each path component is parsed independently: intermediate
+# components as directories, the final component as a file. Returns 1 (no
+# output) for paths with no managed target: any component beginning with '.'
+# (chezmoi ignores these, and .chezmoi* are meta), scripts, and remove_.
+get_target_path() {
+    local src="$1" target="" comp is_last=0
+    local rest="$src"
+    while [ -n "$rest" ]; do
+        case "$rest" in
+            */*) comp="${rest%%/*}"; rest="${rest#*/}"; is_last=0 ;;
+            *)   comp="$rest";       rest="";          is_last=1 ;;
+        esac
+        case "$comp" in .*) return 1 ;; esac
+        if [ "$is_last" -eq 1 ]; then
+            comp="$(parse_file_name "$comp")" || return 1
+        else
+            comp="$(parse_dir_name "$comp")"
+        fi
+        target+="${comp}"
+        [ "$is_last" -eq 0 ] && target+="/"
+    done
+    [ -n "$target" ] || return 1
+    printf '%s' "$target"
+}
 
-# Find deleted source files since last cache + working tree deletions.
-# These are the only files that could have stale targets.
-{
-    if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$CURRENT_SHA" ]; then
-        git diff "$LAST_SHA..HEAD" --diff-filter=D --name-only 2>/dev/null || true
+cleanup_main() {
+    set -euo pipefail
+
+    INTERACTIVE=false
+    if [ -t 0 ] && [ -t 1 ]; then
+        INTERACTIVE=true
     fi
 
-    git diff HEAD --diff-filter=D --name-only 2>/dev/null || true
-} | sort -u | sed '/^$/d' | while IFS= read -r src; do
-    # Skip config, scripts, and repo meta
-    [[ "$src" = .chezmoi* || "$src" = .chezmoiscripts/* || "$src" = README.md || "$src" = .gitignore ]] && continue
+    SOURCE_DIR="$HOME/.local/share/chezmoi"
+    cd "$SOURCE_DIR" 2>/dev/null || return 0
+    [ -d ".git" ] || return 0
 
-    target="$(get_target_path "$src")"
+    STALE_FILE="${TMPDIR:-/tmp}/chezmoi-cleanup-stale-$$.txt"
+    trap 'rm -f "$STALE_FILE"' EXIT
+    : > "$STALE_FILE"
 
-    [ -e "$HOME/$target" ] || [ -L "$HOME/$target" ] || continue
-
-    printf '%s\n' "$HOME/$target"
-done > "$STALE_FILE"
-
-if [ -n "$CURRENT_SHA" ]; then
-    printf '%s\n' "$CURRENT_SHA" > "$CACHE"
-fi
-
-STALE=()
-while IFS= read -r f; do
-    STALE+=("$f")
-done < "$STALE_FILE"
-if [ ${#STALE[@]} -eq 0 ]; then
-    echo "No stale files found."
-    exit 0
-fi
-
-if ! $INTERACTIVE; then
-    echo "chezmoi: stale files detected — run the cleanup script interactively:"
-    printf '  \033[1mbash %s/.chezmoiscripts/run_after_01_cleanup.sh.tmpl\033[22m\n' "$SOURCE_DIR"
-    exit 0
-fi
-
-echo ""
-echo "The following files exist in your home directory but are no longer tracked by chezmoi (source was deleted or renamed):"
-echo ""
-for f in "${STALE[@]}"; do
-    if [ -L "$f" ]; then
-        echo "  $f@"
-    elif [ -d "$f" ]; then
-        echo "  $f/"
-    else
-        echo "  $f"
+    CACHE="$SOURCE_DIR/.chezmoi-cleanup-cache"
+    LAST_SHA=""
+    if [ -f "$CACHE" ]; then
+        LAST_SHA=$(head -1 "$CACHE")
     fi
-done
+    CURRENT_SHA=$(git rev-parse HEAD 2>/dev/null || true)
 
-echo ""
-read -p "Do you want to clean up these files? [y/N] " -r reply
-if [[ "$reply" =~ ^[Yy] ]]; then
+    # Find deleted source files since last cache + working tree deletions.
+    # These are the only files that could have stale targets.
+    {
+        if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$CURRENT_SHA" ]; then
+            git diff "$LAST_SHA..HEAD" --diff-filter=D --name-only 2>/dev/null || true
+        fi
+
+        git diff HEAD --diff-filter=D --name-only 2>/dev/null || true
+    } | sort -u | sed '/^$/d' | while IFS= read -r src; do
+        target="$(get_target_path "$src")" || continue
+
+        [ -e "$HOME/$target" ] || [ -L "$HOME/$target" ] || continue
+
+        printf '%s\n' "$HOME/$target"
+    done > "$STALE_FILE"
+
+    if [ -n "$CURRENT_SHA" ]; then
+        printf '%s\n' "$CURRENT_SHA" > "$CACHE"
+    fi
+
+    STALE=()
+    while IFS= read -r f; do
+        STALE+=("$f")
+    done < "$STALE_FILE"
+    if [ ${#STALE[@]} -eq 0 ]; then
+        echo "No stale files found."
+        return 0
+    fi
+
+    if ! $INTERACTIVE; then
+        echo "chezmoi: stale files detected — run the cleanup script interactively:"
+        printf '  \033[1mbash %s/.chezmoiscripts/run_after_01_cleanup.sh.tmpl\033[22m\n' "$SOURCE_DIR"
+        return 0
+    fi
+
+    echo ""
+    echo "The following files exist in your home directory but are no longer tracked by chezmoi (source was deleted or renamed):"
     echo ""
     for f in "${STALE[@]}"; do
-        if [ -d "$f" ] && [ ! -L "$f" ]; then
-            rm -rf "$f"
+        if [ -L "$f" ]; then
+            echo "  $f@"
+        elif [ -d "$f" ]; then
+            echo "  $f/"
         else
-            rm -f "$f"
+            echo "  $f"
         fi
     done
+
     echo ""
-    echo "Done."
-else
-    echo "Skipped."
+    read -p "Do you want to clean up these files? [y/N] " -r reply
+    if [[ "$reply" =~ ^[Yy] ]]; then
+        echo ""
+        for f in "${STALE[@]}"; do
+            if [ -d "$f" ] && [ ! -L "$f" ]; then
+                rm -rf "$f"
+            else
+                rm -f "$f"
+            fi
+        done
+        echo ""
+        echo "Done."
+    else
+        echo "Skipped."
+    fi
+}
+
+if [ -z "${IS_TEST:-}" ]; then
+    cleanup_main
 fi
