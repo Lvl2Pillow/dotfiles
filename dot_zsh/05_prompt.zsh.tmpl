@@ -1,4 +1,4 @@
-# Performance optimized custom prompt: <dir> <git_branch> <symbol>
+{{ if ne .chezmoi.os "darwin" -}}
 # No child processes, no git status calls (keeps prompt <1ms).
 
 _prompt_is_git_cache=0
@@ -153,3 +153,4 @@ function _prompt_precmd() {
 
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _prompt_precmd
+{{ end -}}

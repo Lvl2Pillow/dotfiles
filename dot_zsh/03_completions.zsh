@@ -1,10 +1,14 @@
-fpath=($HOME/.zsh/completions $fpath)
+if type brew &>/dev/null; then
+  FPATH=${HOMEBREW_PREFIX}/share/zsh/site-functions:${FPATH}
+fi
 
-ZSH_COMPDUMP="${ZDOTDIR:-$HOME}/.zcompdump"
+FPATH=$HOME/.zsh/completions:$FPATH
+
+ZSH_COMPDUMP=${ZDOTDIR:-$HOME}/.zcompdump
 
 autoload -Uz compinit
 # read from cache; update once every 24h
-if [[ -f "$ZSH_COMPDUMP" && -n "$(find "$ZSH_COMPDUMP" -mtime +1 2>/dev/null)" ]]; then
+if [[ -f $ZSH_COMPDUMP && -n $(find $ZSH_COMPDUMP -mtime +1 2>/dev/null) ]]; then
     compinit
 else
     compinit -C

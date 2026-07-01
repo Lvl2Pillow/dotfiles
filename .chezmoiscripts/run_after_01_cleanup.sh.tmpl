@@ -1,0 +1,114 @@
+#!/bin/bash
+set -euo pipefail
+
+# After chezmoi apply, check for stale files in $HOME whose source entries
+# were deleted / moved from the chezmoi git repo. Prompts before cleanup.
+
+INTERACTIVE=false
+if [ -t 0 ] && [ -t 1 ]; then
+    INTERACTIVE=true
+fi
+
+# chezmoi source directory is hardcoded to avoid calling `chezmoi` during apply
+# which would cause a state lock error
+SOURCE_DIR="$HOME/.local/share/chezmoi"
+cd "$SOURCE_DIR" 2>/dev/null || exit 0
+[ -d ".git" ] || exit 0
+
+# Map a chezmoi source-relative path to an absolute target path
+get_target_path() {
+    local src="$1" t="${1%.tmpl}"
+    local first="${t%%/*}"
+    local rest="${t#$first}"
+    local dot=0
+    while :; do
+        case "$first" in
+            dot_*)
+                first="${first#dot_}"; dot=1; continue ;;
+            create_*|empty_*|encrypted_*|executable_*|exact_*|literal_*|modify_*|once_*|private_*|run_*|symlink_*)
+                first="${first#*_}"; continue ;;
+        esac
+        break
+    done
+    [ "$dot" -eq 1 ] && first=".$first"
+    printf '%s' "$first$rest"
+}
+
+STALE_FILE="${TMPDIR:-/tmp}/chezmoi-cleanup-stale-$$.txt"
+trap 'rm -f "$STALE_FILE"' EXIT
+: > "$STALE_FILE"
+
+CACHE="$SOURCE_DIR/.chezmoi-cleanup-cache"
+LAST_SHA=""
+if [ -f "$CACHE" ]; then
+    LAST_SHA=$(head -1 "$CACHE")
+fi
+CURRENT_SHA=$(git rev-parse HEAD 2>/dev/null || true)
+
+# Find deleted source files since last cache + working tree deletions.
+# These are the only files that could have stale targets.
+{
+    if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$CURRENT_SHA" ]; then
+        git diff "$LAST_SHA..HEAD" --diff-filter=D --name-only 2>/dev/null || true
+    fi
+
+    git diff HEAD --diff-filter=D --name-only 2>/dev/null || true
+} | sort -u | sed '/^$/d' | while IFS= read -r src; do
+    # Skip config, scripts, and repo meta
+    [[ "$src" = .chezmoi* || "$src" = .chezmoiscripts/* || "$src" = README.md || "$src" = .gitignore ]] && continue
+
+    target="$(get_target_path "$src")"
+
+    [ -e "$HOME/$target" ] || [ -L "$HOME/$target" ] || continue
+
+    printf '%s\n' "$HOME/$target"
+done > "$STALE_FILE"
+
+if [ -n "$CURRENT_SHA" ]; then
+    printf '%s\n' "$CURRENT_SHA" > "$CACHE"
+fi
+
+STALE=()
+while IFS= read -r f; do
+    STALE+=("$f")
+done < "$STALE_FILE"
+if [ ${#STALE[@]} -eq 0 ]; then
+    echo "No stale files found."
+    exit 0
+fi
+
+if ! $INTERACTIVE; then
+    echo "chezmoi: stale files detected — run the cleanup script interactively:"
+    printf '  \033[1mbash %s/.chezmoiscripts/run_after_01_cleanup.sh.tmpl\033[22m\n' "$SOURCE_DIR"
+    exit 0
+fi
+
+echo ""
+echo "The following files exist in your home directory but are no longer tracked by chezmoi (source was deleted or renamed):"
+echo ""
+for f in "${STALE[@]}"; do
+    if [ -L "$f" ]; then
+        echo "  $f@"
+    elif [ -d "$f" ]; then
+        echo "  $f/"
+    else
+        echo "  $f"
+    fi
+done
+
+echo ""
+read -p "Do you want to clean up these files? [y/N] " -r reply
+if [[ "$reply" =~ ^[Yy] ]]; then
+    echo ""
+    for f in "${STALE[@]}"; do
+        if [ -d "$f" ] && [ ! -L "$f" ]; then
+            rm -rf "$f"
+        else
+            rm -f "$f"
+        fi
+    done
+    echo ""
+    echo "Done."
+else
+    echo "Skipped."
+fi
