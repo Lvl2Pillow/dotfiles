@@ -1,3 +1,4 @@
 dot_zsh/completions/_remctl
 dot_agents/wip-skills/
 .chezmoi-cleanup-cache
+.opencode/

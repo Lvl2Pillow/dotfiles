@@ -1,0 +1,27 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "=== Node packages ==="
+
+if ! command -v npm &>/dev/null; then
+    echo "npm not found — skipping node package installs"
+    exit 0
+fi
+
+# yarn
+if command -v yarn &>/dev/null; then
+    echo "yarn already installed. Skipping."
+else
+    echo "Installing yarn..."
+    npm install -g yarn
+fi
+
+# skills
+if command -v skills &>/dev/null; then
+    echo "skills already installed. Skipping."
+else
+    echo "Installing skills..."
+    npm install -g skills
+fi
+
+echo "Done."

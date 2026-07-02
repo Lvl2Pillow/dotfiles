@@ -15,13 +15,11 @@ pkg_installed() { echo "$installed" | grep -qxF "$1"; }
 cask_installed() { echo "$casks" | grep -qxF "$1"; }
 tap_installed()  { echo "$taps" | grep -qxF "$1"; }
 
+if ! pkg_installed go; then brew install go; fi
 if ! pkg_installed fzf; then brew install fzf; fi
 if ! pkg_installed thefuck; then brew install thefuck; fi
 if ! pkg_installed bun; then brew install bun; fi
 if ! pkg_installed playwright-cli; then brew install playwright-cli; fi
-
-if ! tap_installed jundot/omlx; then brew tap jundot/omlx; fi
-if ! pkg_installed omlx; then brew install omlx; fi
 
 if ! pkg_installed hf; then brew install hf; fi
 if ! pkg_installed zsh-autosuggestions; then brew install zsh-autosuggestions; fi
