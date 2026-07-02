@@ -8,9 +8,11 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 echo "=== Brew packages ==="
 
 installed=$(brew list --formula 2>/dev/null)
+casks=$(brew list --cask 2>/dev/null)
 taps=$(brew tap 2>/dev/null)
 
 pkg_installed() { echo "$installed" | grep -qxF "$1"; }
+cask_installed() { echo "$casks" | grep -qxF "$1"; }
 tap_installed()  { echo "$taps" | grep -qxF "$1"; }
 
 if ! pkg_installed fzf; then brew install fzf; fi
@@ -25,6 +27,8 @@ if ! pkg_installed hf; then brew install hf; fi
 if ! pkg_installed zsh-autosuggestions; then brew install zsh-autosuggestions; fi
 if ! pkg_installed fnm; then brew install fnm; fi
 if ! pkg_installed uv; then brew install uv; fi
+
+if ! cask_installed maccy; then brew install --cask maccy; fi
 
 {{ if .should_install_opencode -}}
 if ! pkg_installed opencode; then brew install opencode; fi

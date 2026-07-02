@@ -5,12 +5,12 @@
 # (the destructive git/cd/rm logic) is suppressed and only the parsing
 # helpers are loaded. This keeps tests free of chezmoi and state locks.
 #
-# Run: bash tests/test_cleanup_parse.sh
+# Run: bash .chezmoiscripts/tests/test_cleanup.sh
 
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEANUP="$SCRIPT_DIR/../.chezmoiscripts/run_after_01_cleanup.sh.tmpl"
+CLEANUP="$SCRIPT_DIR/../../../.chezmoiscripts/run_after_01_cleanup.sh.tmpl"
 
 IS_TEST=1
 export IS_TEST

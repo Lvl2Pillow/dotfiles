@@ -4,8 +4,7 @@
 # agents work-in-progress (not ready for sync)
 .agents/wip-skills/
 
-# test directories: keep in git, don't apply to live filesystem
-**/tests/
+# tests live under .tests/ (dotfiles ignored by chezmoi)
 
 # README stays with git only
 README
