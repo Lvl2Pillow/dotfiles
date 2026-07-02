@@ -12,6 +12,7 @@ _prompt_git_last_pid=0
 _prompt_async_counter=0
 _prompt_async_out="/tmp/prompt_async_out_$$"
 _prompt_rendering=0
+_prompt_last_exit=0
 
 # manually walk up tree to find .git/
 function _prompt_find_git() {
@@ -149,6 +150,9 @@ autoload -Uz add-zsh-hook
 
 _prompt_precmd() {
   local last_exit=$?  # capture exit status before anything changes it
+  if (( ! _prompt_rendering )); then
+    _prompt_last_exit=$last_exit
+  fi
 
   _prompt_signal_handler
 
@@ -165,7 +169,7 @@ _prompt_precmd() {
   fi
 
   local SYMBOL_COLOR=''  # default foreground (white) on success
-  if (( last_exit )); then
+  if (( _prompt_last_exit )); then
     SYMBOL_COLOR='%F{196}'  # bright red (#ff0000) on failure
   fi
 
