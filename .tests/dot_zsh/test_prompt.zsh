@@ -4,7 +4,7 @@
 # _prompt_precmd PROMPT assembly. The async worker (ZLE/SIGUSR1 wiring)
 # requires an interactive shell and is not exercised here.
 
-source "${0:A:h}/../05_prompt.zsh" 2>/dev/null || source "${0:A:h}/../05_prompt.zsh" 2>/dev/null
+source "${0:A:h}/../../dot_zsh/05_prompt.zsh" 2>/dev/null
 
 local tests=0 passed=0 failed=0
 
@@ -50,13 +50,15 @@ setup_git_repo() {
 # _prompt_rendering=1 suppresses the background async spawn so tests stay
 # deterministic; staged/unstaged are set directly to drive branch coloring.
 run_precmd() {
-  local exit_code="$1" cols="$2" dir="$3" staged="$4" unstaged="$5"
+  local exit_code="$1" cols="$2" dir="$3" staged="$4" unstaged="$5" untracked="${6:-0}" stash="${7:-0}"
   pushd -q "$dir"
   _prompt_git_staged=$staged
   _prompt_git_unstaged=$unstaged
+  _prompt_git_untracked=$untracked
+  _prompt_git_stashed=$stash
   _prompt_rendering=1
+  _prompt_last_exit=$exit_code
   if [[ -n "$cols" ]]; then COLUMNS=$cols; else unset COLUMNS; fi
-  (exit $exit_code)
   _prompt_precmd
   _prompt_rendering=0
   popd -q
@@ -213,45 +215,68 @@ echo "=== _prompt_signal_handler ==="
 
 local save_staged=$_prompt_git_staged
 local save_unstaged=$_prompt_git_unstaged
+local save_untracked=$_prompt_git_untracked
+local save_stash=$_prompt_git_stashed
 local save_counter=$_prompt_async_counter
 rm -f $_prompt_async_out
 
 # no result file → state untouched
-_prompt_git_staged=99; _prompt_git_unstaged=99
+_prompt_git_staged=99; _prompt_git_unstaged=99; _prompt_git_untracked=99; _prompt_git_stashed=99
 _prompt_signal_handler
 assert "$_prompt_git_staged" "99" "no file: staged unchanged"
 assert "$_prompt_git_unstaged" "99" "no file: unstaged unchanged"
+assert "$_prompt_git_untracked" "99" "no file: untracked unchanged"
+assert "$_prompt_git_stashed" "99" "no file: stash unchanged"
 
 # matching counter → state updated and file consumed
 _prompt_async_counter=5
-echo "0|1|5" > "$_prompt_async_out"
-_prompt_git_staged=99; _prompt_git_unstaged=99
+echo "0|1|0|0|5" > "$_prompt_async_out"
+_prompt_git_staged=99; _prompt_git_unstaged=99; _prompt_git_untracked=99; _prompt_git_stashed=99
 _prompt_signal_handler
 assert "$_prompt_git_staged" "0" "matching counter: staged=0"
 assert "$_prompt_git_unstaged" "1" "matching counter: unstaged=1"
+assert "$_prompt_git_untracked" "0" "matching counter: untracked=0"
+assert "$_prompt_git_stashed" "0" "matching counter: stash=0"
 [[ ! -f $_prompt_async_out ]]; assert "$?" "0" "matching counter: file deleted"
+
+# matching counter with untracked=1 and stash=1
+_prompt_async_counter=5
+echo "0|0|1|1|5" > "$_prompt_async_out"
+_prompt_git_staged=99; _prompt_git_unstaged=99; _prompt_git_untracked=99; _prompt_git_stashed=99
+_prompt_signal_handler
+assert "$_prompt_git_staged" "0" "untracked+stash: staged=0"
+assert "$_prompt_git_unstaged" "0" "untracked+stash: unstaged=0"
+assert "$_prompt_git_untracked" "1" "untracked+stash: untracked=1"
+assert "$_prompt_git_stashed" "1" "untracked+stash: stash=1"
+[[ ! -f $_prompt_async_out ]]; assert "$?" "0" "untracked+stash: file deleted"
 
 # stale counter (mismatched) → state untouched, file still deleted
 _prompt_async_counter=10
-echo "1|1|5" > "$_prompt_async_out"
-_prompt_git_staged=99; _prompt_git_unstaged=99
+echo "1|1|1|1|5" > "$_prompt_async_out"
+_prompt_git_staged=99; _prompt_git_unstaged=99; _prompt_git_untracked=99; _prompt_git_stashed=99
 _prompt_signal_handler
 assert "$_prompt_git_staged" "99" "stale counter: staged unchanged"
 assert "$_prompt_git_unstaged" "99" "stale counter: unstaged unchanged"
+assert "$_prompt_git_untracked" "99" "stale counter: untracked unchanged"
+assert "$_prompt_git_stashed" "99" "stale counter: stash unchanged"
 [[ ! -f $_prompt_async_out ]]; assert "$?" "0" "stale counter: file deleted"
 
 # malformed payload (no pipes) → state untouched, file deleted
 _prompt_async_counter=7
 echo "garbage" > "$_prompt_async_out"
-_prompt_git_staged=99; _prompt_git_unstaged=99
+_prompt_git_staged=99; _prompt_git_unstaged=99; _prompt_git_untracked=99; _prompt_git_stashed=99
 _prompt_signal_handler
 assert "$_prompt_git_staged" "99" "malformed: staged unchanged"
 assert "$_prompt_git_unstaged" "99" "malformed: unstaged unchanged"
+assert "$_prompt_git_untracked" "99" "malformed: untracked unchanged"
+assert "$_prompt_git_stashed" "99" "malformed: stash unchanged"
 [[ ! -f $_prompt_async_out ]]; assert "$?" "0" "malformed: file deleted"
 
 _prompt_async_counter=$save_counter
 _prompt_git_staged=$save_staged
 _prompt_git_unstaged=$save_unstaged
+_prompt_git_untracked=$save_untracked
+_prompt_git_stashed=$save_stash
 rm -f $_prompt_async_out
 
 # ===================================================================
@@ -274,17 +299,17 @@ assert "$PROMPT" "%F{135}${nogit}%f %F{196}%(#.#.%%)%f " "no repo, exit 1: red s
 run_precmd 0 "" "$clean" 0 0
 assert "$PROMPT" "%F{135}${clean}%f %F{112}main%f %(#.#.%%)%f " "clean repo: green branch"
 
-# staged only → blue branch
+# staged only → yellow branch
 run_precmd 0 "" "$clean" 1 0
-assert "$PROMPT" "%F{135}${clean}%f %F{220}main%f %(#.#.%%)%f " "staged only: blue branch"
+assert "$PROMPT" "%F{135}${clean}%f %F{220}main%f %(#.#.%%)%f " "staged only: yellow branch"
 
-# unstaged only → yellow branch
+# unstaged only → orange branch
 run_precmd 0 "" "$clean" 0 1
-assert "$PROMPT" "%F{135}${clean}%f %F{208}main%f %(#.#.%%)%f " "unstaged only: yellow branch"
+assert "$PROMPT" "%F{135}${clean}%f %F{208}main%f %(#.#.%%)%f " "unstaged only: orange branch"
 
-# both staged and unstaged → unstaged wins (highest priority)
+# both staged and unstaged → unstaged wins (orange)
 run_precmd 0 "" "$clean" 1 1
-assert "$PROMPT" "%F{135}${clean}%f %F{208}main%f %(#.#.%%)%f " "staged+unstaged: yellow wins"
+assert "$PROMPT" "%F{135}${clean}%f %F{208}main%f %(#.#.%%)%f " "staged+unstaged: orange wins"
 
 # detached HEAD → branch shown as @<short sha>, colored clean (green)
 local detached="$TMPDIR/detached"
@@ -326,6 +351,16 @@ assert "$PROMPT" "%F{135}${tight}%f %F{112}very-long-feature-branch-name-fo...po
 # wide terminal (COLUMNS=120) with short dir+branch → no truncation, extra unused
 run_precmd 0 "120" "$clean" 0 0
 assert "$PROMPT" "%F{135}${clean}%f %F{112}main%f %(#.#.%%)%f " "wide terminal: no truncation"
+
+# untracked only → red branch (highest priority)
+run_precmd 0 "" "$clean" 0 0 1 0
+assert "$PROMPT" "%F{135}${clean}%f %F{203}main%f %(#.#.%%)%f " "untracked only: red branch"
+
+# stash only (clean repo) → teal branch
+run_precmd 0 "" "$clean" 0 0 0 1
+assert "$PROMPT" "%F{135}${clean}%f %F{43}main%f %(#.#.%%)%f " "stash only: teal branch"
+
+
 
 # ===================================================================
 # Report

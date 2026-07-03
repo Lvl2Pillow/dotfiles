@@ -10,7 +10,7 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEANUP="$SCRIPT_DIR/../../../.chezmoiscripts/run_after_01_cleanup.sh.tmpl"
+CLEANUP="$SCRIPT_DIR/../../.chezmoiscripts/run_after_01_cleanup.sh.tmpl"
 
 IS_TEST=1
 export IS_TEST

@@ -4,11 +4,19 @@
 
 [core]
 	fsmonitor = true
+	untrackedCache = true
+
+[index]
+    skipHash = true
+    version = 4
 
 [alias]
     # switch branch with fzf
-	b = "!f() { command -v fzf &>/dev/null || { echo 'fzf not installed' >&2; return 1; }; git for-each-ref --format='%(refname:short)' refs/heads/ | fzf +s +m -e | xargs -r git switch; }; f"
+    b = "!f() { if command -v fzf &>/dev/null; then git for-each-ref --format='%(refname:short)' refs/heads/ | fzf +s +m -e | xargs -r git switch; else echo 'fzf not installed'; fi }; f"
     l = log --oneline --graph --decorate --first-parent
+
+[diff]
+    algorithm = histogram
 
 [push]
 	autoSetupRemote = true

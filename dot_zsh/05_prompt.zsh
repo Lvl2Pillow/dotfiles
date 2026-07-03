@@ -1,4 +1,5 @@
 # Performant prompt using async + SIGUSR1 for instant redraw.
+# Async will be faster with fsmonitor and untrackedCache.
 # <working_dir> <git_branch> <symbol>
 
 _prompt_is_git_cache=0
@@ -8,6 +9,8 @@ _prompt_dir_out=""
 _prompt_branch_out=""
 _prompt_git_staged=0
 _prompt_git_unstaged=0
+_prompt_git_untracked=0
+_prompt_git_stashed=0
 _prompt_git_last_pid=0
 _prompt_async_counter=0
 _prompt_async_out="/tmp/prompt_async_out_$$"
@@ -117,9 +120,19 @@ function _prompt_async_git_start() {
     cd "$1" 2>/dev/null || exit
     local staged=0
     local unstaged=0
-    git diff-index --cached --quiet HEAD 2>/dev/null || staged=1
-    git --no-optional-locks diff-files --quiet 2>/dev/null || unstaged=1
-    echo "$staged|$unstaged|$_prompt_async_counter" > "${_prompt_async_out}_volatile"
+    local untracked=0
+    local stashed=0
+    git --no-optional-locks status --porcelain --ignore-submodules=all --untracked-files=normal --no-renames > "${_prompt_async_out}_status" 2>/dev/null || exit
+    while IFS= read -r line; do
+      [[ ${line[1]} != ' ' && ${line[1]} != '?' ]] && staged=1
+      [[ ${line[2]} != ' ' && ${line[2]} != '?' ]] && unstaged=1
+      [[ ${line} = '?? '* ]] && untracked=1
+      (( staged && unstaged )) && break
+    done < "${_prompt_async_out}_status"
+    if (( staged + unstaged + untracked == 0 )); then
+        git rev-parse --verify --quiet refs/stash &>/dev/null && stashed=1
+    fi
+    echo "$staged|$unstaged|$untracked|$stashed|$_prompt_async_counter" > "${_prompt_async_out}_volatile"
     mv "${_prompt_async_out}_volatile" "$_prompt_async_out"
     # signal parent to redraw prompt immediately
     kill -s USR1 $$ 2>/dev/null
@@ -134,9 +147,11 @@ function _prompt_signal_handler() {
   IFS= read -r line < "$_prompt_async_out" || return
   rm -f "$_prompt_async_out"
   local parts=("${(@s:|:)line}")
-  [[ $parts[3] != $_prompt_async_counter ]] && return   # stale
+  [[ $parts[5] != $_prompt_async_counter ]] && return   # stale
   _prompt_git_staged=$parts[1]
   _prompt_git_unstaged=$parts[2]
+  _prompt_git_untracked=$parts[3]
+  _prompt_git_stashed=$parts[4]
 }
 
 TRAPUSR1() {
@@ -161,11 +176,15 @@ _prompt_precmd() {
   # MIN_TOTAL = 36 + space + 40 + space + symbol + space = 80
 
   local DIR_COLOR='%F{135}'     # purple
-  local BRANCH_COLOR='%F{112}'  # lime — clean (default)
-  if (( _prompt_git_unstaged )); then
-    BRANCH_COLOR='%F{208}'      # orange — unstaged (highest priority)
+  local BRANCH_COLOR='%F{112}'  # green — clean (default)
+  if (( _prompt_git_untracked )); then
+    BRANCH_COLOR='%F{203}'      # red — untracked
+  elif (( _prompt_git_unstaged )); then
+    BRANCH_COLOR='%F{208}'      # orange — unstaged
   elif (( _prompt_git_staged )); then
     BRANCH_COLOR='%F{220}'      # yellow — staged
+  elif (( _prompt_git_stashed )); then
+    BRANCH_COLOR='%F{43}'       # teal — stashed
   fi
 
   local SYMBOL_COLOR=''  # default foreground (white) on success
@@ -210,9 +229,9 @@ _prompt_precmd() {
 }
 add-zsh-hook precmd _prompt_precmd
 
-# cleanup on exit - removes FIFO, kills worker, no "bg running" warning
+# cleanup on exit - removes temp file, kills async, no "bg process running" warning
 _prompt_cleanup() {
-  rm -f $_prompt_async_out "${_prompt_async_out}_volatile"
+  rm -f $_prompt_async_out "${_prompt_async_out}_volatile" "${_prompt_async_out}_status"
   [[ $_prompt_git_last_pid -gt 0 ]] && kill $_prompt_git_last_pid 2>/dev/null
 }
 add-zsh-hook zshexit _prompt_cleanup
