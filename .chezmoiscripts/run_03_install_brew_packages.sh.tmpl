@@ -29,7 +29,7 @@ if ! pkg_installed uv; then brew install uv; fi
 if ! cask_installed maccy; then brew install --cask maccy; fi
 
 {{ if .should_install_opencode -}}
-if ! pkg_installed opencode; then brew install opencode; fi
+if ! pkg_installed opencode; then brew install anomalyco/tap/opencode; fi
 {{ end -}}
 
 echo "Done."
