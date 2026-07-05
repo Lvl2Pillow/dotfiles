@@ -24,4 +24,12 @@ else
     npm install -g skills
 fi
 
+# sqlite-vec
+if npm list -g sqlite-vec &>/dev/null; then
+    echo "sqlite-vec already installed. Skipping."
+else
+    echo "Installing sqlite-vec..."
+    npm install -g sqlite-vec
+fi
+
 echo "Done."
