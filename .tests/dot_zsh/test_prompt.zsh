@@ -297,7 +297,7 @@ assert "$PROMPT" "%F{135}${nogit}%f %F{196}%(#.#.%%)%f " "no repo, exit 1: red s
 
 # clean repo → green branch
 run_precmd 0 "" "$clean" 0 0
-assert "$PROMPT" "%F{135}${clean}%f %F{112}main%f %(#.#.%%)%f " "clean repo: green branch"
+assert "$PROMPT" "%F{135}${clean}%f %F{35}main%f %(#.#.%%)%f " "clean repo: green branch"
 
 # staged only → yellow branch
 run_precmd 0 "" "$clean" 1 0
@@ -319,7 +319,7 @@ local sha=$(git rev-parse HEAD)
 git checkout "$sha" 2>/dev/null
 popd -q
 run_precmd 0 "" "$detached" 0 0
-assert "$PROMPT" "%F{135}${detached}%f %F{112}@${sha:0:7}%f %(#.#.%%)%f " "detached HEAD: @<sha>"
+assert "$PROMPT" "%F{135}${detached}%f %F{35}@${sha:0:7}%f %(#.#.%%)%f " "detached HEAD: @<sha>"
 
 # $PWD under $HOME → rendered as ~/...
 local home_dir="$TMPDIR/home_test"
@@ -346,19 +346,19 @@ setup_git_repo "$tight"
 local long_branch="very-long-feature-branch-name-for-testing-purposes"
 pushd -q "$tight"; git checkout -b "$long_branch" 2>/dev/null; popd -q
 run_precmd 0 "69" "$tight" 0 0
-assert "$PROMPT" "%F{135}${tight}%f %F{112}very-long-feature-branch-name-fo...poses%f %(#.#.%%)%f " "tight terminal: branch truncated"
+assert "$PROMPT" "%F{135}${tight}%f %F{35}very-long-feature-branch-name-fo...poses%f %(#.#.%%)%f " "tight terminal: branch truncated"
 
 # wide terminal (COLUMNS=120) with short dir+branch → no truncation, extra unused
 run_precmd 0 "120" "$clean" 0 0
-assert "$PROMPT" "%F{135}${clean}%f %F{112}main%f %(#.#.%%)%f " "wide terminal: no truncation"
+assert "$PROMPT" "%F{135}${clean}%f %F{35}main%f %(#.#.%%)%f " "wide terminal: no truncation"
 
 # untracked only → red branch (highest priority)
 run_precmd 0 "" "$clean" 0 0 1 0
-assert "$PROMPT" "%F{135}${clean}%f %F{203}main%f %(#.#.%%)%f " "untracked only: red branch"
+assert "$PROMPT" "%F{135}${clean}%f %F{196}main%f %(#.#.%%)%f " "untracked only: red branch"
 
-# stash only (clean repo) → teal branch
+# stash only (clean repo) → lime branch
 run_precmd 0 "" "$clean" 0 0 0 1
-assert "$PROMPT" "%F{135}${clean}%f %F{43}main%f %(#.#.%%)%f " "stash only: teal branch"
+assert "$PROMPT" "%F{135}${clean}%f %F{112}main%f %(#.#.%%)%f " "stash only: lime branch"
 
 
 

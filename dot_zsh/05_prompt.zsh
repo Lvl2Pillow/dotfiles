@@ -176,7 +176,7 @@ _prompt_precmd() {
   # MIN_TOTAL = 36 + space + 40 + space + symbol + space = 80
 
   local DIR_COLOR='%F{135}'     # purple
-  local BRANCH_COLOR='%F{78}'  # green — clean (default)
+  local BRANCH_COLOR='%F{35}'  # green — clean (default)
   if (( _prompt_git_untracked )); then
     BRANCH_COLOR='%F{196}'      # red — untracked
   elif (( _prompt_git_unstaged )); then
@@ -184,7 +184,7 @@ _prompt_precmd() {
   elif (( _prompt_git_staged )); then
     BRANCH_COLOR='%F{220}'      # yellow — staged
   elif (( _prompt_git_stashed )); then
-    BRANCH_COLOR='%F{149}'       # lime — stashed
+    BRANCH_COLOR='%F{112}'      # lime — stashed
   fi
 
   local SYMBOL_COLOR=''  # default foreground (white) on success
