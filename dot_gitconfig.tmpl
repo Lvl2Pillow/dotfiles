@@ -24,7 +24,7 @@
 	}; f"
 	l = log --oneline --graph
 	# Update last commit with additional changes whilst keeping same message
-	amend = commit --amend --no-edit
+	amend = commit --all --amend --no-edit
 	# Undo last commit but keeps changes staged
 	uncommit = reset --soft HEAD~1
 	# Unstage (untrack for new files) all files from Git but not removed from disk
