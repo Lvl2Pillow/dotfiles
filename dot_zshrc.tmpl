@@ -2,3 +2,8 @@
 for module in $HOME/.zsh/*.zsh(N); do
   source "$module"
 done
+
+# Local override, not tracked in Chezmoi / Git
+if [ -f $HOME/.zshrc_override ]; then
+    source "$HOME/.zshrc_override"
+fi

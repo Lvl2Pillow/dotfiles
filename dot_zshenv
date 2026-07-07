@@ -7,3 +7,8 @@ export PATH
 
 # pretty ls colors
 export LSCOLORS='GxFxCxExBxGxFxBxBxCxEx'
+
+# Local override, not tracked in Chezmoi / Git
+if [ -f $HOME/.zshenv_override ]; then
+    source "$HOME/.zshenv_override"
+fi

@@ -28,6 +28,13 @@ if ! pkg_installed uv; then brew install uv; fi
 
 if ! cask_installed maccy; then brew install --cask maccy; fi
 
+if ! tap_installed saihgupr/notificli; then brew tap saihgupr/notificli; fi
+if ! cask_installed notificli; then
+  brew trust --cask saihgupr/notificli/notificli
+  brew install --cask notificli
+  xattr -cr /Applications/NotifiCLI.app
+fi
+
 {{ if .should_install_opencode -}}
 if ! pkg_installed opencode; then brew install anomalyco/tap/opencode; fi
 {{ end -}}

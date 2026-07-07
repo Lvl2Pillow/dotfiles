@@ -36,6 +36,7 @@
 	coloring = highlightRecent
 
 [branch]
+    column = never
 	sort = -committerdate
 
 [column]
@@ -113,3 +114,7 @@
 [user]
     email = {{ .git_email }}
 	name = {{ .git_name }}
+
+# Local override, not tracked in Chezmoi / Git
+[include]
+    path = ~/.gitconfig_override
