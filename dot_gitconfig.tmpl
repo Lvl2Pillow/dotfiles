@@ -42,6 +42,9 @@
 [column]
 	ui = auto
 
+[commit]
+	gpgsign = true
+
 [core]
 	editor = zed --wait
 	# Cache file changes
@@ -62,6 +65,11 @@
 
 [fetch]
 	prune = true
+
+{{ if eq .chezmoi.os "darwin" -}}
+[gpg]
+	program = /opt/homebrew/bin/gpg
+{{ end -}}
 
 [help]
 	autocorrect = prompt
@@ -114,7 +122,8 @@
 [user]
     email = {{ .git_email }}
 	name = {{ .git_name }}
+	signingKey = {{ .git_signingKey }}
 
 # Local override, not tracked in Chezmoi / Git
 [include]
-    path = ~/.gitconfig_override
+    path = {{ .chezmoi.homeDir }}/.gitconfig_override

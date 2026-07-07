@@ -14,29 +14,33 @@ taps=$(brew tap 2>/dev/null)
 pkg_installed() { echo "$installed" | grep -qxF "$1"; }
 cask_installed() { echo "$casks" | grep -qxF "$1"; }
 tap_installed()  { echo "$taps" | grep -qxF "$1"; }
+auto_install() { yes | brew install $@; }
 
-if ! pkg_installed go; then brew install go; fi
-if ! pkg_installed fzf; then brew install fzf; fi
-if ! pkg_installed thefuck; then brew install thefuck; fi
-if ! pkg_installed bun; then brew install bun; fi
-if ! pkg_installed playwright-cli; then brew install playwright-cli; fi
+if ! pkg_installed go; then auto_install go; fi
+if ! pkg_installed fzf; then auto_install fzf; fi
+if ! pkg_installed thefuck; then auto_install thefuck; fi
+if ! pkg_installed bun; then auto_install bun; fi
+if ! pkg_installed playwright-cli; then auto_install playwright-cli; fi
 
-if ! pkg_installed hf; then brew install hf; fi
-if ! pkg_installed zsh-autosuggestions; then brew install zsh-autosuggestions; fi
-if ! pkg_installed fnm; then brew install fnm; fi
-if ! pkg_installed uv; then brew install uv; fi
+if ! pkg_installed hf; then auto_install hf; fi
+if ! pkg_installed zsh-autosuggestions; then auto_install zsh-autosuggestions; fi
+if ! pkg_installed fnm; then auto_install fnm; fi
+if ! pkg_installed uv; then auto_install uv; fi
+if ! pkg_installed ykman; then auto_install ykman; fi
+if ! pkg_installed gnupg; then auto_install gnupg; fi
+if ! pkg_installed pinentry-mac; then auto_install pinentry-mac; fi
 
-if ! cask_installed maccy; then brew install --cask maccy; fi
+if ! cask_installed maccy; then auto_install --cask maccy; fi
 
 if ! tap_installed saihgupr/notificli; then brew tap saihgupr/notificli; fi
 if ! cask_installed notificli; then
   brew trust --cask saihgupr/notificli/notificli
-  brew install --cask notificli
+  auto_install --cask notificli
   xattr -cr /Applications/NotifiCLI.app
 fi
 
 {{ if .should_install_opencode -}}
-if ! pkg_installed opencode; then brew install anomalyco/tap/opencode; fi
+if ! pkg_installed opencode; then auto_install anomalyco/tap/opencode; fi
 {{ end -}}
 
 echo "Done."

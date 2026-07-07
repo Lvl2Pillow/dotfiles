@@ -1,7 +1,7 @@
-# don't save less history
+# Don't save `less` history
 export LESSHISTFILE=-
 
-# timestamp history
+# Timestamp history
 export HISTTIMEFORMAT="[%F %T] "
 setopt EXTENDED_HISTORY
 setopt INC_APPEND_HISTORY

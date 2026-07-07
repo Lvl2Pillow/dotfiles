@@ -5,7 +5,10 @@ typeset -U path
 
 export PATH
 
-# pretty ls colors
+# GPG agent for YubiKey commit signing + SSH auth
+export SSH_AUTH_SOCK=$HOME/.gnupg/S.gpg-agent.ssh
+
+# Pretty ls colors
 export LSCOLORS='GxFxCxExBxGxFxBxBxCxEx'
 
 # Local override, not tracked in Chezmoi / Git
