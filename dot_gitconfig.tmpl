@@ -38,8 +38,10 @@
 [branch]
 	sort = -committerdate
 
+{{ if .using_yubikey -}}
 [commit]
 	gpgsign = true
+{{- end }}
 
 [core]
 	editor = zed --wait
@@ -62,7 +64,7 @@
 [fetch]
 	prune = true
 
-{{ if eq .chezmoi.os "darwin" -}}
+{{ if .using_yubikey -}}
 [gpg]
 	program = /opt/homebrew/bin/gpg
 {{ end -}}
@@ -118,7 +120,9 @@
 [user]
     email = {{ .git_email }}
 	name = {{ .git_name }}
+{{ if .using_yubikey -}}
 	signingKey = {{ .git_signingKey }}
+{{- end }}
 
 # Local override, not tracked in Chezmoi / Git
 [include]

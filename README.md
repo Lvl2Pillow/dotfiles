@@ -8,7 +8,7 @@ sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply https://github.com/
 
 ## Features
 - Idempotent scripts that installs tools and dependencies.
-- Clean up script that removes stale target files.
+- Cleans up stale target files (best effort).
 - Custom ZSH prompt (<1ms to draw).
   - For large repos, relies on Git caches.
 - Shell aliases and functions:
