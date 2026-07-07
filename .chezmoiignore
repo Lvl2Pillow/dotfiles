@@ -8,3 +8,7 @@
 
 # README stays with git only
 README
+
+{{- if ne .chezmoi.os "darwin" }}
+Library/
+{{- end }}
