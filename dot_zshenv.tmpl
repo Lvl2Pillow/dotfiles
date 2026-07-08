@@ -5,8 +5,10 @@ typeset -U path
 
 export PATH
 
+{{ if .using_yubikey -}}
 # GPG agent for YubiKey commit signing + SSH auth
 export SSH_AUTH_SOCK=$HOME/.gnupg/S.gpg-agent.ssh
+{{ end -}}
 
 # Pretty ls colors
 export LSCOLORS='GxFxCxExBxGxFxBxBxCxEx'

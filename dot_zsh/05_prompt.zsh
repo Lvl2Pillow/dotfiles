@@ -37,7 +37,7 @@ function _prompt_find_git() {
 
   local current="$PWD"
   while [[ "$current" != "/" ]]; do
-    if [[ -d "$current/.git" ]]; then
+    if [[ -d "$current/.git" && -f "$current/.git/HEAD" ]]; then
       _prompt_git_dir_cache="$current/.git"
       _prompt_is_git_cache=1
       return 0
@@ -46,7 +46,7 @@ function _prompt_find_git() {
       local line
       IFS= read -r line < "$current/.git" || { _prompt_is_git_cache=0; return 1; }
       if [[ "$line" == gitdir:\ * ]]; then
-        local git_dir="${line#gitdir: }"
+        local git_dir="${${line#gitdir: }:A}"
         if [[ -d "$git_dir" ]]; then
           _prompt_is_git_cache=1
           _prompt_git_dir_cache="$git_dir"

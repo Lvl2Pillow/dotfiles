@@ -197,13 +197,51 @@ local worktree="$TMPDIR/worktree"
 setup_git_repo "$worktree"
 mv "$worktree/.git" "$worktree/actual_git"
 echo "gitdir: $worktree/actual_git" > "$worktree/.git"
+local worktree_resolved="$worktree/actual_git"
+worktree_resolved="${worktree_resolved:A}"
 _prompt_dir_cache=""; _prompt_is_git_cache=0; _prompt_git_dir_cache=""
 pushd -q "$worktree"
 _prompt_find_git; rc=$?
 assert_rc $rc 0 "worktree returns 0"
-assert "$_prompt_git_dir_cache" "$worktree/actual_git" "worktree resolves gitdir"
+assert "$_prompt_git_dir_cache" "$worktree_resolved" "worktree resolves gitdir"
 popd -q
 
+# .git directory without HEAD file → not treated as a repo
+local nohead="$TMPDIR/nohead"
+mkdir -p "$nohead/.git"
+echo "[core]" > "$nohead/.git/config"
+_prompt_dir_cache=""; _prompt_is_git_cache=0; _prompt_git_dir_cache=""
+pushd -q "$nohead"
+_prompt_find_git; rc=$?
+assert_rc $rc 1 "incomplete .git (no HEAD) returns 1"
+assert "$_prompt_git_dir_cache" "" "incomplete .git leaves git_dir empty"
+popd -q
+
+# cached git dir loses HEAD → cache invalidated, fresh walk returns 1
+local bak_head
+bak_head=$(< "$clean/.git/HEAD")
+rm "$clean/.git/HEAD"
+_prompt_dir_cache="$clean"; _prompt_is_git_cache=1; _prompt_git_dir_cache="$clean/.git"
+pushd -q "$clean"
+_prompt_find_git; rc=$?
+assert_rc $rc 1 "cached repo with missing HEAD returns 1"
+assert "$_prompt_is_git_cache" "0" "missing HEAD invalidates cache flag"
+popd -q
+echo "$bak_head" > "$clean/.git/HEAD"
+
+# worktree with relative gitdir path → :A resolves to absolute
+local rel_worktree="$TMPDIR/rel_worktree"
+setup_git_repo "$rel_worktree"
+mv "$rel_worktree/.git" "$rel_worktree/actual_git"
+echo "gitdir: actual_git" > "$rel_worktree/.git"
+_prompt_dir_cache=""; _prompt_is_git_cache=0; _prompt_git_dir_cache=""
+pushd -q "$rel_worktree"
+_prompt_find_git; rc=$?
+assert_rc $rc 0 "worktree with relative gitdir returns 0"
+local rel_resolved="$rel_worktree/actual_git"
+rel_resolved="${rel_resolved:A}"
+assert "$_prompt_git_dir_cache" "$rel_resolved" "worktree resolves relative gitdir"
+popd -q
 _prompt_dir_cache=$saved_dir_cache
 _prompt_is_git_cache=$saved_is_cache
 _prompt_git_dir_cache=$saved_git_dir_cache

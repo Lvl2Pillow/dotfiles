@@ -41,7 +41,7 @@
 {{ if .using_yubikey -}}
 [commit]
 	gpgsign = true
-{{- end }}
+{{ end -}}
 
 [core]
 	editor = zed --wait
@@ -122,7 +122,7 @@
 	name = {{ .git_name }}
 {{ if .using_yubikey -}}
 	signingKey = {{ .git_signingKey }}
-{{- end }}
+{{ end -}}
 
 # Local override, not tracked in Chezmoi / Git
 [include]
