@@ -1,9 +1,11 @@
 #!/usr/bin/env zsh
 # Unit tests for 0X_prompt.zsh — prompt rendering logic.
-# Covers pure helpers (truncation, git detection, signal handler) and
-# _prompt_precmd PROMPT assembly. The async worker (ZLE/SIGUSR1 wiring)
-# requires an interactive shell and is not exercised here.
+# Covers pure helpers (truncation, git detection, signal handler),
+# _prompt_async_git_start process-group cleanup, and _prompt_precmd PROMPT
+# assembly. The ZLE/SIGUSR1 redraw wiring requires an interactive shell and
+# is not exercised here.
 
+_PROMPT_FORCE_LOAD=1
 source "${0:A:h}/../../dot_zsh/05_prompt.zsh" 2>/dev/null
 
 local tests=0 passed=0 failed=0
@@ -318,6 +320,28 @@ _prompt_git_stashed=$save_stash
 rm -f $_prompt_async_out
 
 # ===================================================================
+# _prompt_async_git_start — kills previous background job
+# ===================================================================
+echo "=== _prompt_async_git_start ==="
+
+# The kill path requires an interactive shell with job control, so exercise
+# it with a recently-dead PID: group-kill should silently fail and a new
+# worker is spawned anyway.
+( sleep 0.1 ) &!
+local dead_pid=$!
+wait $dead_pid 2>/dev/null
+
+_prompt_git_last_pid=$dead_pid
+_prompt_async_git_start "$clean"
+
+# A new PID was recorded.
+[[ $_prompt_git_last_pid != $dead_pid ]]; assert "$?" "0" "new async pid recorded"
+
+# Clean up the new worker.
+kill $_prompt_git_last_pid 2>/dev/null
+wait $_prompt_git_last_pid 2>/dev/null
+
+# ===================================================================
 # _prompt_precmd — PROMPT assembly
 # ===================================================================
 echo "=== _prompt_precmd ==="
@@ -398,7 +422,29 @@ assert "$PROMPT" "%F{135}${clean}%f %F{196}main%f %(#.#.%%)%f " "untracked only:
 run_precmd 0 "" "$clean" 0 0 0 1
 assert "$PROMPT" "%F{135}${clean}%f %F{112}main%f %(#.#.%%)%f " "stash only: lime branch"
 
+# ===================================================================
+# _prompt_precmd — IS_MANAGED mode
+# ===================================================================
+echo "=== IS_MANAGED mode ==="
 
+export IS_MANAGED=1
+
+# staged still works in managed mode
+run_precmd 0 "" "$clean" 1 0 0 0
+assert "$PROMPT" "%F{135}${clean}%f %F{220}main%f %(#.#.%%)%f " "managed: staged yellow"
+
+# unstaged still works in managed mode
+run_precmd 0 "" "$clean" 0 1 0 0
+assert "$PROMPT" "%F{135}${clean}%f %F{208}main%f %(#.#.%%)%f " "managed: unstaged orange"
+
+# stash still works in managed mode
+run_precmd 0 "" "$clean" 0 0 0 1
+assert "$PROMPT" "%F{135}${clean}%f %F{112}main%f %(#.#.%%)%f " "managed: stash lime"
+
+# exit code still works in managed mode
+run_precmd 1 "" "$clean" 0 0 0 0
+assert "$PROMPT" "%F{135}${clean}%f %F{35}main%f %F{196}%(#.#.%%)%f " "managed: exit 1 red symbol"
+unset IS_MANAGED
 
 # ===================================================================
 # Report

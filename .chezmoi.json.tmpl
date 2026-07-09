@@ -4,6 +4,7 @@
 {{- $git_email := promptStringOnce . "git_email" "Git email?" -}}
 {{- $using_yubikey := promptBoolOnce . "using_yubikey" "Are you using a Yubikey?" -}}
 {{- $git_signingKey := promptStringOnce . "git_signingKey" "Git signing key?" -}}
+{{- $is_managed := promptBoolOnce . "is_managed" "Is this machine managed?" false -}}
 {
     "data": {
         "should_install_opencode": {{ $should_install_opencode }},
@@ -11,6 +12,7 @@
         "git_name": {{ $git_name | quote }},
         "git_email": {{ $git_email | quote }},
         "using_yubikey": {{ $using_yubikey }},
-        "git_signingKey": {{ $git_signingKey | quote }}
+        "git_signingKey": {{ $git_signingKey | quote }},
+        "is_managed": {{ $is_managed }}
     }
 }

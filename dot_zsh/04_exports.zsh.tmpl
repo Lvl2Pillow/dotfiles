@@ -1,0 +1,12 @@
+{{ if .is_managed -}}
+# If machine is managed. Security software can interfere with many things, so we need a way to short-circuit
+export IS_MANAGED=1
+{{ end -}}
+
+# Don't save `less` history
+export LESSHISTFILE=-
+
+# Timestamp history
+export HISTTIMEFORMAT="[%F %T] "
+setopt EXTENDED_HISTORY
+setopt INC_APPEND_HISTORY

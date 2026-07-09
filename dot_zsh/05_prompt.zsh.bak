@@ -129,16 +129,14 @@ function _prompt_async_git_start() {
     local untracked=0
     local stashed=0
     if [[ -n $IS_MANAGED ]]; then
-      git --no-optional-locks diff --cached --quiet 2>/dev/null
-      (( $? == 1 )) && staged=1
-      git --no-optional-locks diff --quiet 2>/dev/null
-      (( $? == 1 )) && unstaged=1
+      git --no-optional-locks diff --cached --quiet 2>/dev/null || staged=1
+      git --no-optional-locks diff --quiet 2>/dev/null || unstaged=1
     else
       git --no-optional-locks status --porcelain --ignore-submodules=all --untracked-files=normal --no-renames > "${_prompt_async_out}_status" 2>/dev/null || exit
       while IFS= read -r line; do
         [[ ${line[1]} != ' ' && ${line[1]} != '?' ]] && staged=1
         [[ ${line[2]} != ' ' && ${line[2]} != '?' ]] && unstaged=1
-        [[ ${line} = '??'* ]] && untracked=1
+        [[ ${line} = '?? '* ]] && untracked=1
         (( staged && unstaged )) && break
       done < "${_prompt_async_out}_status"
     fi
