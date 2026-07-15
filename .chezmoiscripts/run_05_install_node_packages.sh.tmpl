@@ -24,6 +24,14 @@ else
     npm install -g skills
 fi
 
+# smithery
+if command -v smithery &>/dev/null; then
+    echo "smithery already installed. Skipping."
+else
+    echo "Installing smithery..."
+    npm install -g smithery
+fi
+
 # sqlite-vec
 if npm list -g sqlite-vec &>/dev/null; then
     echo "sqlite-vec already installed. Skipping."
