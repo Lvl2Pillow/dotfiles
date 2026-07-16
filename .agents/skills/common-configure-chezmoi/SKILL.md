@@ -1,7 +1,6 @@
 ---
 name: common-configure-chezmoi
 description: Use when touching dotfiles, installing global tools/deps, or modifying config/dependency source code. Automates syncing all machines via chezmoi run_ scripts and managed files.
-compatibility: opencode
 ---
 
 # Chezmoi Configuration Management

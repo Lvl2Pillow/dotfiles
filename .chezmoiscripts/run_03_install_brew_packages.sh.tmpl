@@ -14,7 +14,7 @@ taps=$(brew tap 2>/dev/null)
 pkg_installed() { echo "$installed" | grep -qxF "$1"; }
 cask_installed() { echo "$casks" | grep -qxF "$1"; }
 tap_installed()  { echo "$taps" | grep -qxF "$1"; }
-auto_install() { yes | brew install $@; }
+auto_install() { echo 'y' | brew install "$@"; }
 
 if ! pkg_installed go; then auto_install go; fi
 if ! pkg_installed fzf; then auto_install fzf; fi
@@ -33,16 +33,13 @@ if ! pkg_installed rustup; then auto_install rustup; fi
 
 if ! cask_installed maccy; then auto_install --cask maccy; fi
 
+if ! cask_installed zed; then auto_install --cask zed; fi
 if ! tap_installed saihgupr/notificli; then brew tap saihgupr/notificli; fi
 if ! cask_installed notificli; then
   brew trust --cask saihgupr/notificli/notificli
   auto_install --cask notificli
   xattr -cr /Applications/NotifiCLI.app
 fi
-
-{{ if .should_install_opencode -}}
-if ! pkg_installed opencode; then auto_install anomalyco/tap/opencode; fi
-{{ end -}}
 
 echo "Done."
 {{ end -}}
