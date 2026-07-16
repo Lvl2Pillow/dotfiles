@@ -33,7 +33,7 @@ if ! pkg_installed rustup; then auto_install rustup; fi
 
 if ! cask_installed maccy; then auto_install --cask maccy; fi
 
-if ! cask_installed zed; then auto_install --cask zed; fi
+if ! cask_installed zed && [ ! -d "/Applications/Zed.app" ]; then auto_install --cask zed; fi
 if ! tap_installed saihgupr/notificli; then brew tap saihgupr/notificli; fi
 if ! cask_installed notificli; then
   brew trust --cask saihgupr/notificli/notificli
