@@ -189,9 +189,9 @@ _prompt_precmd() {
   # MIN_TOTAL = 36 + space + 40 + space + symbol + space = 80
 
   local DIR_COLOR='%F{135}'     # purple
-  local BRANCH_COLOR='%F{35}'   # green — clean (default)
+  local BRANCH_COLOR='%F{34}'   # green — clean (default)
   if (( _prompt_git_untracked )); then
-    BRANCH_COLOR='%F{196}'      # red — untracked
+    BRANCH_COLOR='%F{88}'       # dark red — untracked (matches pi diff red)
   elif (( _prompt_git_unstaged )); then
     BRANCH_COLOR='%F{208}'      # orange — unstaged
   elif (( _prompt_git_staged )); then
