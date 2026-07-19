@@ -38,10 +38,10 @@
 [branch]
     sort = -committerdate
 
-{{ if .using_yubikey -}}
+{{- if .using_yubikey }}
 [commit]
     gpgsign = true
-{{ end -}}
+{{- end }}
 
 [core]
     editor = zed --wait
@@ -64,10 +64,10 @@
 [fetch]
     prune = true
 
-{{ if .using_yubikey -}}
+{{- if .using_yubikey }}
 [gpg]
     program = /opt/homebrew/bin/gpg
-{{ end -}}
+{{- end }}
 
 [help]
     autocorrect = prompt
