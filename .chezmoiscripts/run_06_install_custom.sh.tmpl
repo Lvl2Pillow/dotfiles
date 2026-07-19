@@ -6,26 +6,32 @@ echo "=== Custom installs ==="
 
 if command -v remctl &>/dev/null; then
     echo "remctl already installed. Skipping."
-    exit 0
+else
+    echo "Installing remctl..."
+    clone_dir=$(mktemp -d)
+    git clone https://github.com/viticci/remctl.git "$clone_dir/remctl"
+    pushd "$clone_dir/remctl"
+    ./install.sh --bootstrap
+
+    if [ -f SKILL.md ]; then
+        mkdir -p "$HOME/.agents/skills/remctl"
+        mv SKILL.md "$HOME/.agents/skills/remctl/SKILL.md"
+    fi
+
+    popd
+    rm -rf "$clone_dir"
+
+    echo ""
+    echo "  → Manually run 'remctl onboard' to complete installation."
+    echo ""
 fi
 
-echo "Installing remctl..."
-clone_dir=$(mktemp -d)
-git clone https://github.com/viticci/remctl.git "$clone_dir/remctl"
-pushd "$clone_dir/remctl"
-./install.sh --bootstrap
-
-if [ -f SKILL.md ]; then
-    mkdir -p "$HOME/.agents/skills/remctl"
-    mv SKILL.md "$HOME/.agents/skills/remctl/SKILL.md"
+if command -v rustup &>/dev/null; then
+    echo "rustup already installed. Skipping."
+else
+    echo "Installing Rust toolchain via rustup..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 fi
-
-popd
-rm -rf "$clone_dir"
-
-echo ""
-echo "  → Manually run 'remctl onboard' to complete installation."
-echo ""
 
 echo "Done."
 {{ end -}}

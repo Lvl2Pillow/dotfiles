@@ -1,128 +1,128 @@
 # https://git-scm.com/docs/git-config
 
 [alias]
-	alias = "!f() { \
-		if command -v fzf &>/dev/null; then \
-			git config --name-only --get-regexp '^alias\\.' | \
-				sed 's/^alias\\.//' | \
-				fzf --preview=\"git config --get alias.{} | perl -pe 's/\\t(\\t*)/\\n\\$1/g'\" \
-					--preview-window=right:80%:wrap | \
-				xargs -r sh -c 'printf \"git %s (copied to clipboard)\\n\" \"$1\"; printf \"git %s\" \"$1\" | pbcopy' _; \
-		else \
-			echo 'fzf not installed'; \
-		fi; \
-	}; f"
-	# Switch branch with fzf
-	b = "!f() { \
-		if command -v fzf &>/dev/null; then \
-			git for-each-ref --format='%(refname:short)' refs/heads/ | \
-				fzf +s +m -e | \
-				xargs -r git switch; \
-		else \
-			echo 'fzf not installed'; \
-		fi; \
-	}; f"
-	l = log --oneline --graph
-	# Update last commit with additional changes whilst keeping same message
-	amend = commit --all --amend --no-edit
-	# Undo last commit but keeps changes staged
-	uncommit = reset --soft HEAD~1
-	# Unstage (untrack for new files) all files from Git but not removed from disk
-	unstage = reset HEAD -- .
-	# Force push but abort if it will overwrite newly discovered commits
-	jedi = push --force-with-lease
+    alias = "!f() { \
+        if command -v fzf &>/dev/null; then \
+            git config --name-only --get-regexp '^alias\\.' | \
+                sed 's/^alias\\.//' | \
+                fzf --preview=\"git config --get alias.{} | perl -pe 's/\\t(\\t*)/\\n\\$1/g'\" \
+                    --preview-window=right:80%:wrap | \
+                xargs -r sh -c 'printf \"git %s (copied to clipboard)\\n\" \"$1\"; printf \"git %s\" \"$1\" | pbcopy' _; \
+        else \
+            echo 'fzf not installed'; \
+        fi; \
+    }; f"
+    # Switch branch with fzf
+    b = "!f() { \
+        if command -v fzf &>/dev/null; then \
+            git for-each-ref --format='%(refname:short)' refs/heads/ | \
+                fzf +s +m -e | \
+                xargs -r git switch; \
+        else \
+            echo 'fzf not installed'; \
+        fi; \
+    }; f"
+    l = log --oneline --graph
+    # Update last commit with additional changes whilst keeping same message
+    amend = commit --all --amend --no-edit
+    # Undo last commit but keeps changes staged
+    uncommit = reset --soft HEAD~1
+    # Unstage (untrack for new files) all files from Git but not removed from disk
+    unstage = reset HEAD -- .
+    # Force push but abort if it will overwrite newly discovered commits
+    jedi = push --force-with-lease
 
 [blame]
-	coloring = highlightRecent
+    coloring = highlightRecent
 
 [branch]
-	sort = -committerdate
+    sort = -committerdate
 
 {{ if .using_yubikey -}}
 [commit]
-	gpgsign = true
+    gpgsign = true
 {{ end -}}
 
 [core]
-	editor = zed --wait
-	# Cache file changes
-	fsmonitor = true
-	# Explicitly include directories but only if core.sparseCheckout is configured
-	sparseCheckoutCone = true
-	# Cache new files
-	untrackedCache = true
+    editor = zed --wait
+    # Cache file changes
+    fsmonitor = true
+    # Explicitly include directories but only if core.sparseCheckout is configured
+    sparseCheckoutCone = true
+    # Cache new files
+    untrackedCache = true
 
 [diff]
-	# Clearer but slightly slower diff
-	algorithm = histogram
-	colorMoved = plain
-	guitool = zed
+    # Clearer but slightly slower diff
+    algorithm = histogram
+    colorMoved = plain
+    guitool = zed
 
 [difftool "zed"]
-	cmd = zed --diff \"$LOCAL\" \"$REMOTE\"
+    cmd = zed --diff \"$LOCAL\" \"$REMOTE\"
 
 [fetch]
-	prune = true
+    prune = true
 
 {{ if .using_yubikey -}}
 [gpg]
-	program = /opt/homebrew/bin/gpg
+    program = /opt/homebrew/bin/gpg
 {{ end -}}
 
 [help]
-	autocorrect = prompt
+    autocorrect = prompt
 
 [index]
     # Skips checksum which is rarely used
-	skipHash = true
-	# Spare directory but only if core.sparseCheckout is configured
-	sparse = true
-	# Compressed file paths
-	version = 4
+    skipHash = true
+    # Spare directory but only if core.sparseCheckout is configured
+    sparse = true
+    # Compressed file paths
+    version = 4
 
 [log]
-	# Only when single file specified then follow file renames
-	follow = true
+    # Only when single file specified then follow file renames
+    follow = true
 
 [merge]
-	# Stash and pop before / after
-	autoStash = true
-	guitool = zed
+    # Stash and pop before / after
+    autoStash = true
+    guitool = zed
 
 [mergetool "zed"]
-	cmd = zed --wait
+    cmd = zed --wait
 
 [push]
-	autoSetupRemote = true
+    autoSetupRemote = true
 
 [rebase]
-	# Squash minor (fixup, squash, amend) commits into main commit
-	autoSquash = true
-	autoStash = true
-	# Update ref of stacked branches
-	updateRefs = true
+    # Squash minor (fixup, squash, amend) commits into main commit
+    autoSquash = true
+    autoStash = true
+    # Update ref of stacked branches
+    updateRefs = true
 
 [rerere]
     # Stage auto-resolve and continue rebase without pausing
-	autoUpdate = true
-	# Auto-resolve repeat conflicts
-	enabled = true
+    autoUpdate = true
+    # Auto-resolve repeat conflicts
+    enabled = true
 
 [stash]
-	showIncludeUntracked = true
+    showIncludeUntracked = true
 
 [status]
-	relativePaths = false
+    relativePaths = false
 
 [tag]
-	sort = version:refname
+    sort = version:refname
 
 [user]
     email = {{ .git_email }}
-	name = {{ .git_name }}
-{{ if .using_yubikey -}}
-	signingKey = {{ .git_signingKey }}
-{{ end -}}
+    name = {{ .git_name }}
+{{- if .using_yubikey }}
+    signingKey = {{ .git_signingKey }}
+{{- end }}
 
 # Local override, not tracked in Chezmoi / Git
 [include]
