@@ -33,5 +33,15 @@ else
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 fi
 
+btt_preset="{{ .chezmoi.sourceDir }}/.chezmoiscripts/assets/Default.bttpreset"
+if [ -f "$btt_preset" ] && pgrep -x "BetterTouchTool" &>/dev/null; then
+    echo "Importing BetterTouchTool preset..."
+    osascript -e "tell application \"BetterTouchTool\" to import_preset \"$btt_preset\"" > /dev/null
+elif [ -f "$btt_preset" ]; then
+    echo "BetterTouchTool not running. Skipping preset import."
+else
+    echo "BTT preset file not found. Skipping."
+fi
+
 echo "Done."
 {{ end -}}
