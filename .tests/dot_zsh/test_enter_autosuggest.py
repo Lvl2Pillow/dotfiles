@@ -5,10 +5,7 @@ Consolidated: ghost, accept, enter cleanup, rapid enter, accept-and-hold, Esc+En
 
 Single spawn. All editing operations in one session.
 """
-import os, sys, pty, select, time, re
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '.venv', 'lib',
-    f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages'))
+import os, sys, pty, select, time, re, subprocess, tempfile, shutil
 
 def read_all(fd, timeout=0.5):
     out = b''
@@ -21,6 +18,43 @@ def read_all(fd, timeout=0.5):
             out += c
         except: break
     return out
+
+def poll_for(fd, check_fn, timeout=5.0, interval=0.05):
+    """Read from fd until check_fn(data) returns True or timeout.
+    Returns all data read."""
+    deadline = time.time() + timeout
+    data = b''
+    while time.time() < deadline:
+        r, _, _ = select.select([fd], [], [], interval)
+        if r:
+            try:
+                chunk = os.read(fd, 8192)
+                if chunk:
+                    data += chunk
+            except:
+                pass
+        if check_fn(data):
+            break
+    return data
+
+
+def setup_dirty_repo():
+    """Create a temp git repo with an untracked file (dirty -> color 88).
+    Use short path under /tmp so prompt doesn't truncate dir name."""
+    import random, string
+    suffix = ''.join(random.choices(string.ascii_lowercase, k=6))
+    tmpdir = f'/tmp/zsh_repo_{suffix}'
+    subprocess.run(['git', 'init', '-b', 'main', tmpdir], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'config', 'user.email', 'test@test'], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'config', 'user.name', 'test'], capture_output=True)
+    with open(os.path.join(tmpdir, 'init'), 'w') as f:
+        f.write('init')
+    subprocess.run(['git', '-C', tmpdir, 'add', 'init'], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'commit', '-m', 'init'], capture_output=True)
+    with open(os.path.join(tmpdir, 'untracked'), 'w') as f:
+        f.write('dirty')
+    return tmpdir
+
 
 def wait_for_prompt(fd, timeout=3.0):
     """Wait until data arrives on fd. Returns True if data ready."""
@@ -76,6 +110,7 @@ def strip_ansi_data(data):
     return data.replace('\x07', '')
 
 def run():
+    dirty_repo = setup_dirty_repo()
     pid, fd = pty.fork()
     if pid == 0:
         os.environ['TERM'] = 'xterm-256color'
@@ -83,7 +118,8 @@ def run():
         os.environ['LINES'] = '10'
         d = f'/tmp/zsh_probe_{os.getpid()}'
         os.makedirs(d, exist_ok=True)
-        cfg = 'source ~/.zshrc 2>/dev/null || true\n'
+        cfg = f'cd {dirty_repo} 2>/dev/null\n'
+        cfg += 'source ~/.zshrc 2>/dev/null || true\n'
         with open(os.path.join(d, '.zshrc'), 'w') as f:
             f.write(cfg)
         os.environ['ZDOTDIR'] = d
@@ -394,6 +430,10 @@ def run():
         inc_890 = b'234567890' in clean
         results.append(('014 history accept: completes echo 1234567890', inc_890,
             f'clean: {clean[-30:]!r}'))
+        # After accept, footer should still be present (dir=135, branch=88)
+        accept_footer = b'38;5;135' in out_accept and b'38;5;88' in out_accept
+        results.append(('014c history accept: footer present (dir 135, branch 88)', accept_footer,
+            f'out: {out_accept[-120:]!r}'))
         os.write(fd, b'\n')
         time.sleep(0.2)
         out_final = read_all(fd, 0.2)
@@ -417,6 +457,7 @@ def run():
         time.sleep(0.2)
         os.close(fd)
         os.waitpid(pid, 0)
+        shutil.rmtree(dirty_repo, ignore_errors=True)
 
     return results
 

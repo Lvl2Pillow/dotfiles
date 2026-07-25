@@ -3,3 +3,4 @@ dot_agents/wip-skills/
 .chezmoi-cleanup-cache
 .venv
 __pycache__
+.pytest_cache

@@ -53,6 +53,7 @@ setup_git_repo() {
 run_precmd() {
     local exit_code="$1" dir="$2" staged="$3" unstaged="$4" untracked="${5:-0}" stash="${6:-0}"
     pushd -q "$dir"
+    _prompt_rh_colors=()
     _prompt_git_staged=$staged
     _prompt_git_unstaged=$unstaged
     _prompt_git_untracked=$untracked
@@ -186,7 +187,13 @@ COLUMNS=80
 _prompt_precmd
 popd -q
 assert "${_prompt_rh_colors[*]}" "fg=135 fg=88" "stale globals: dark red shown until async completes"
+# Reset all globals so subsequent tests start clean
+_prompt_rh_colors=()
+_prompt_git_staged=0
+_prompt_git_unstaged=0
 _prompt_git_untracked=0
+_prompt_git_stashed=0
+_prompt_last_exit=0
 
 # ===================================================================
 # _prompt_git_branch — detached HEAD

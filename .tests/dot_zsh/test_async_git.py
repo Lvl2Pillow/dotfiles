@@ -8,12 +8,7 @@ Single spawn. Cd to chezmoi (dirty repo), wait for async, check:
 - Branch name visible in footer
 - No stale green (34) from previous clean state
 """
-import os, sys, pty, select, time, re
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '.venv', 'lib',
-    f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages'))
-
-CHEZMOI = os.path.expanduser('~/.local/share/chezmoi')
+import os, sys, pty, select, time, re, subprocess, tempfile, shutil
 
 def read_all(fd, timeout=0.5):
     out = b''
@@ -26,6 +21,25 @@ def read_all(fd, timeout=0.5):
             out += c
         except: break
     return out
+
+def poll_for(fd, check_fn, timeout=5.0, interval=0.05):
+    """Read from fd until check_fn(data) returns True or timeout.
+    Returns all data read."""
+    deadline = time.time() + timeout
+    data = b''
+    while time.time() < deadline:
+        r, _, _ = select.select([fd], [], [], interval)
+        if r:
+            try:
+                chunk = os.read(fd, 8192)
+                if chunk:
+                    data += chunk
+            except:
+                pass
+        if check_fn(data):
+            break
+    return data
+
 
 def branch_colors_in_output(out):
     colors = set()
@@ -57,7 +71,22 @@ def count_footers(lines):
             count += 1
     return count
 
-def run():
+def setup_dirty_repo():
+    """Create a temp git repo with an untracked file (dirty state -> color 88)."""
+    tmpdir = tempfile.mkdtemp(prefix='zsh_test_repo_')
+    subprocess.run(['git', 'init', '-b', 'main', tmpdir], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'config', 'user.email', 'test@test'], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'config', 'user.name', 'test'], capture_output=True)
+    with open(os.path.join(tmpdir, 'init'), 'w') as f:
+        f.write('init')
+    subprocess.run(['git', '-C', tmpdir, 'add', 'init'], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'commit', '-m', 'init'], capture_output=True)
+    with open(os.path.join(tmpdir, 'untracked'), 'w') as f:
+        f.write('dirty')
+    return tmpdir
+
+
+def run(dirty_repo):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ['TERM'] = 'xterm-256color'
@@ -79,12 +108,13 @@ def run():
         time.sleep(1.0)
         read_all(fd, 0.5)
 
-        # cd to chezmoi (dirty repo with untracked/staged changes)
-        os.write(fd, f'cd {CHEZMOI}\n'.encode())
+        # cd to dirty repo (untracked file -> footer color 88)
+        os.write(fd, f'cd {dirty_repo}\n'.encode())
         time.sleep(0.2)
 
-        # Wait for async to complete
-        time.sleep(2.0)  # async completion
+        # Wait for async to complete (poll for expected color)
+        poll_for(fd, lambda d: b'38;5;88' in d or b'38;5;34' in d, timeout=5.0)
+        time.sleep(0.1)  # settle
 
         # Capture output WITHOUT any keystroke — zle .redisplay updates colors
         out = read_all(fd, 1.0)
@@ -94,7 +124,7 @@ def run():
         results.append(('001 async: dark red (88) without keystroke', has_88, f'colors: {colors}'))
 
         # Branch name should be visible somewhere
-        branch_text = b'main' in out or b'chezmoi' in out
+        branch_text = b'main' in out
         results.append(('002 async: branch visible', branch_text, 'branch not in output'))
 
         # Green (34) should NOT be the last branch color — 88 should dominate
@@ -136,7 +166,7 @@ def run():
     return results
 
 
-def run_rapid_cd():
+def run_rapid_cd(dirty_repo):
     """Rapid cd: cd to dirty, wait, cd to clean, check final state is clean.
     Second async invalidates first via counter mismatch."""
     pid, fd = pty.fork()
@@ -161,13 +191,9 @@ def run_rapid_cd():
         read_all(fd, 0.5)
 
         # cd to dirty repo, wait for async to complete
-        os.write(fd, f'cd {CHEZMOI}\n'.encode())
-        time.sleep(2.0)
+        os.write(fd, f'cd {dirty_repo}\n'.encode())
+        poll_for(fd, lambda d: b'38;5;88' in d or b'38;5;34' in d, timeout=5.0)
         read_all(fd, 0.3)
-
-        # Capture output with dirty repo state
-        out_dirty = read_all(fd, 0.3)
-        colors_dirty = branch_colors_in_output(out_dirty)
 
         # Immediately cd to /tmp (non-git dir, no branch)
         os.write(fd, b'cd /tmp\n')
@@ -249,28 +275,32 @@ def run_no_autosuggest():
 
 
 if __name__ == '__main__':
+    dirty_repo = setup_dirty_repo()
     fail_count = 0
     pass_count = 0
-    for name, ok, msg in run():
-        if ok:
-            pass_count += 1
-            print(f'  PASS: {name}')
-        else:
-            fail_count += 1
-            print(f'  FAIL: {name} — {msg}')
-    for name, ok, msg in run_rapid_cd():
-        if ok:
-            pass_count += 1
-            print(f'  PASS: {name}')
-        else:
-            fail_count += 1
-            print(f'  FAIL: {name} — {msg}')
-    for name, ok, msg in run_no_autosuggest():
-        if ok:
-            pass_count += 1
-            print(f'  PASS: {name}')
-        else:
-            fail_count += 1
-            print(f'  FAIL: {name} — {msg}')
+    try:
+        for name, ok, msg in run(dirty_repo):
+            if ok:
+                pass_count += 1
+                print(f'  PASS: {name}')
+            else:
+                fail_count += 1
+                print(f'  FAIL: {name} — {msg}')
+        for name, ok, msg in run_rapid_cd(dirty_repo):
+            if ok:
+                pass_count += 1
+                print(f'  PASS: {name}')
+            else:
+                fail_count += 1
+                print(f'  FAIL: {name} — {msg}')
+        for name, ok, msg in run_no_autosuggest():
+            if ok:
+                pass_count += 1
+                print(f'  PASS: {name}')
+            else:
+                fail_count += 1
+                print(f'  FAIL: {name} — {msg}')
+    finally:
+        shutil.rmtree(dirty_repo, ignore_errors=True)
     print(f'\n{pass_count}/{pass_count + fail_count} passed')
     sys.exit(0 if fail_count == 0 else 1)

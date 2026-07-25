@@ -133,6 +133,16 @@ See `references/testing.md`.
 ### region_highlight
 -   **Must never run outside zle widget context**. No `2>/dev/null` guards. Only call from widgets and `zle -F -w` callbacks.
 -   **Positions come from the current BUFFER**. If a widget changes BUFFER after position computation, highlights point to wrong characters. `zle-line-pre-redraw` catches this.
+-   **Tag entries with `memo=token` (zsh 5.9+) to remove them later by tag instead of by position.** When BUFFER changes (mid-buffer insert/delete), zsh auto-shifts `region_highlight` start/end positions but preserves the memo token. Removal via `region_highlight=( "${(@)region_highlight:#*memo=mytoken}" )` works regardless of shifted positions — no delta tracking needed. The memo has zero visual impact (never fed to rendering pipeline).
+
+    ```zsh
+    # Add tagged entries
+    region_highlight+=("${start} ${end} fg=135 memo=my-plugin")
+    # Remove them — position-agnostic, survives any buffer edit
+    region_highlight=("${(@)region_highlight:#*memo=my-plugin}")
+    ```
+
+    This is the canonical approach for plugins that manage their own highlights without clobbering others (used by zsh-syntax-highlighting, zsh-autosuggestions, etc.).
 
 ### Signal handling
 -   **Variable name mismatches break cleanup**. TRAPINT sets `_prompt_ctrl_c`. Precmd checks `_prompt_ctrlc`. One underscore kills the path. Keep names in sync.

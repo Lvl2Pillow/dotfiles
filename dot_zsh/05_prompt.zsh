@@ -309,23 +309,21 @@ add-zsh-hook precmd _prompt_precmd
 
 # Recompute region_highlight positions from current BUFFER / POSTDISPLAY
 _prompt_update_region_highlight() {
-    # remove old entries
-    for pos in $_prompt_rh_positions; do
-        region_highlight=("${(@)region_highlight:#${pos} *}")
-    done
-    _prompt_rh_positions=()
+    # remove old prompt entries by memo token (zsh 5.9+)
+    # memo survives auto-shifting on any buffer edit and has zero visual impact
+    region_highlight=("${(@)region_highlight:#*memo=prompt-footer}")
 
     local -i prompt_start=$(( ${#BUFFER} + ${#POSTDISPLAY} - ${#_prompt} ))
     local -i prompt_end=$(( prompt_start + ${#_prompt} ))
     local -i dir_end=$(( prompt_start + _prompt_dir_len ))
 
-    local dir_entry="${prompt_start} ${dir_end} bold,${_prompt_rh_colors[1]}"
+    local dir_entry="${prompt_start} ${dir_end} bold,${_prompt_rh_colors[1]} memo=prompt-footer"
     region_highlight+=("${dir_entry}")
     _prompt_rh_positions+=("${prompt_start} ${dir_end}")
 
     if (( ${#_prompt_rh_colors[@]} > 1 )); then
         local -i branch_start=$(( dir_end + 1 ))
-        local branch_entry="${branch_start} ${prompt_end} bold,${_prompt_rh_colors[2]}"
+        local branch_entry="${branch_start} ${prompt_end} bold,${_prompt_rh_colors[2]} memo=prompt-footer"
         region_highlight+=("${branch_entry}")
         _prompt_rh_positions+=("${branch_start} ${prompt_end}")
     fi

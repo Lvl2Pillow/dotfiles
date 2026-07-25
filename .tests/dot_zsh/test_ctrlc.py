@@ -8,9 +8,6 @@ red % after interrupt, white % after successful command.
 """
 import os, sys, pty, select, time, re
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '.venv', 'lib',
-    f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages'))
-
 def read_all(fd, timeout=0.5):
     out = b''
     while True:

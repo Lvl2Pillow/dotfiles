@@ -6,10 +6,8 @@ Consolidated: footer rendering + permission denied + cursor position.
 Single spawn. Footer visible, symbol, long buffer, no duplicate,
 no permission denied from unreadable .git, cursor after % prompt.
 """
-import os, sys, pty, select, time, re, tempfile, shutil
+import os, sys, pty, select, time, re, tempfile, shutil, subprocess
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '.venv', 'lib',
-    f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages'))
 from miniterm import MiniTerm
 
 def read_all(fd, timeout=0.5):
@@ -23,6 +21,25 @@ def read_all(fd, timeout=0.5):
             out += c
         except: break
     return out
+
+def poll_for(fd, check_fn, timeout=5.0, interval=0.05):
+    """Read from fd until check_fn(data) returns True or timeout.
+    Returns all data read."""
+    deadline = time.time() + timeout
+    data = b''
+    while time.time() < deadline:
+        r, _, _ = select.select([fd], [], [], interval)
+        if r:
+            try:
+                chunk = os.read(fd, 8192)
+                if chunk:
+                    data += chunk
+            except:
+                pass
+        if check_fn(data):
+            break
+    return data
+
 
 def wait_for_prompt(fd, timeout=3.0):
     deadline = time.time() + timeout
@@ -67,8 +84,21 @@ def count_footers(lines):
             count += 1
     return count
 
+def setup_clean_repo():
+    """Create a temp clean git repo (no dirty state -> color 34)."""
+    tmpdir = tempfile.mkdtemp(prefix='zsh_test_repo_')
+    subprocess.run(['git', 'init', '-b', 'main', tmpdir], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'config', 'user.email', 'test@test'], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'config', 'user.name', 'test'], capture_output=True)
+    with open(os.path.join(tmpdir, 'init'), 'w') as f:
+        f.write('init')
+    subprocess.run(['git', '-C', tmpdir, 'add', 'init'], capture_output=True)
+    subprocess.run(['git', '-C', tmpdir, 'commit', '-m', 'init'], capture_output=True)
+    return tmpdir
+
+
 def run():
-    CHEZMOI = os.path.expanduser('~/.local/share/chezmoi')
+    clean_repo = setup_clean_repo()
     perm_dir = tempfile.mkdtemp(prefix='zsh_perm_')
     nested = os.path.join(perm_dir, 'a', 'b', 'c')
     os.makedirs(nested)
@@ -142,9 +172,9 @@ def run():
         results.append(('006 no permission denied from .git', not has_perm_err,
             'permission denied found'))
 
-        # Cursor position: cd to chezmoi, press Enter, type x, check cursor
-        os.write(fd, f'cd {CHEZMOI}\n'.encode())
-        time.sleep(2.0)  # async completion
+        # Cursor position: cd to clean repo, press Enter, type x, check cursor
+        os.write(fd, f'cd {clean_repo}\n'.encode())
+        poll_for(fd, lambda d: b'38;5;34' in d, timeout=5.0)
         os.write(fd, b'\n')
         time.sleep(0.3)
         out_before = read_all(fd, 0.2)
@@ -210,6 +240,7 @@ def run():
         os.close(fd)
         os.waitpid(pid, 0)
         shutil.rmtree(perm_dir, ignore_errors=True)
+        shutil.rmtree(clean_repo, ignore_errors=True)
 
     return results
 
