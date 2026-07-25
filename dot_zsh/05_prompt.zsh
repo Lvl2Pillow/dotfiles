@@ -26,10 +26,11 @@ _prompt_async_counter=0
 _prompt_async_out="/tmp/prompt_async_out_$$"
 _prompt_rendering=0
 _prompt_last_exit=0
+_prompt_ctrl_c=0
 _prompt=""
 _prompt_dir_len=0
 _prompt_rh_colors=()
-_prompt_rh_entries=()
+_prompt_rh_positions=()
 
 # handle async updates
 TRAPUSR1() {
@@ -37,26 +38,48 @@ TRAPUSR1() {
   _prompt_rendering=1
   _prompt_precmd
   _prompt_rendering=0
-  zle .reset-prompt 2>/dev/null
+
+  # Immediate terminal update: rewrite footer with new colors via printf.
+  # Only when _prompt is set (after first prompt) and we have colors.
+  if [[ -n "$_prompt" ]]; then
+    local dir_color="${_prompt_rh_colors[1]#fg=}"
+    local -i target_col=$(( 3 + ${#BUFFER} ))
+    if [[ -n "$_prompt_branch_out" ]]; then
+      local branch_color="${_prompt_rh_colors[2]#fg=}"
+      # \033[1B     — cursor down to footer row
+      # \033[2K     — clear footer line
+      # \033[G      — cursor to column 1
+      # \033[1m     — bold
+      # \033[38;5;%dm — foreground color (directory)
+      # \033[0m     — reset attributes
+      # \033[1m     — bold again (branch)
+      # \033[38;5;%dm — foreground color (branch)
+      # \033[0m     — reset attributes
+      # \033[A      — cursor up to prompt row
+      # \033[%dG   — cursor to absolute column (after "% " + buffer)
+      printf '\033[1B\033[2K\033[G\033[1m\033[38;5;%dm%s\033[0m \033[1m\033[38;5;%dm%s\033[0m\033[A\033[%dG' \
+        "$dir_color" "$_prompt_dir_out" "$branch_color" "$_prompt_branch_out" "$target_col"
+    else
+      # Same sequence without branch (no git repo)
+      printf '\033[1B\033[2K\033[G\033[1m\033[38;5;%dm%s\033[0m\033[A\033[%dG' \
+        "$dir_color" "$_prompt_dir_out" "$target_col"
+    fi
+  fi
 }
 
 # handle Ctrl+C
 TRAPINT() {
   emulate -L zsh
-  # whether in zle (otherwise during command execution)
-  if zle; then
-    # cursor down, clear footer row, then move up 2 rows to negate zle's \033[1B and gap
-    printf '\033[1B\033[2K\033[2A'
-    return $(( 128 + $1 ))
-  fi
-  return 0
+    _prompt_ctrl_c=1
+    _prompt_last_exit=$(( 128 + $1 ))
+    return $_prompt_last_exit
 }
 
 # manually walk up tree to find .git/
 function _prompt_find_git() {
   if [[ "$PWD" == "$_prompt_dir_cache" ]]; then
     if (( _prompt_is_git_cache )); then
-      if [[ -f "$_prompt_git_dir_cache/HEAD" ]]; then
+      if [[ -f "$_prompt_git_dir_cache/HEAD" && -r "$_prompt_git_dir_cache/HEAD" ]]; then
         return 0
       fi
       # lost .git/HEAD - invalidate and re-walk
@@ -72,11 +95,11 @@ function _prompt_find_git() {
 
   local current="$PWD"
   while [[ "$current" != "/" ]]; do
-    if [[ -d "$current/.git" && -f "$current/.git/HEAD" ]]; then
+    if [[ -d "$current/.git" && -f "$current/.git/HEAD" && -r "$current/.git/HEAD" ]]; then
       _prompt_git_dir_cache="$current/.git"
       _prompt_is_git_cache=1
       return 0
-    elif [[ -f "$current/.git" ]]; then
+    elif [[ -f "$current/.git" && -r "$current/.git" ]]; then
       # git worktree
       local line
       IFS= read -r line < "$current/.git" || { _prompt_is_git_cache=0; return 1; }
@@ -213,8 +236,8 @@ function _prompt_signal_handler() {
 autoload -Uz add-zsh-hook
 
 _prompt_precmd() {
-  emulate -L zsh
   local -i last_exit=$?  # capture exit status before anything changes it
+  emulate -L zsh
   if (( ! _prompt_rendering )); then
     _prompt_last_exit=$last_exit
   fi
@@ -248,6 +271,7 @@ _prompt_precmd() {
     branch_raw="$_prompt_branch_out"
     (( _prompt_rendering )) || _prompt_async_git_start "$PWD"
   fi
+  # _prompt_rendering=0  # reset flag: _prompt_last_exit + async check done; next precmd captures $? normally
 
   local -i dir_cap
   local -i branch_cap
@@ -286,101 +310,168 @@ _prompt_precmd() {
     _prompt_rh_colors=("${DIR_COLOR}")
   fi
 
-  # PROMPT is just symbol; the rest goes into the footer
-  PROMPT="%B${SYMBOL_COLOR}%(#.#.%%)%f %b"
+# zle does not have ctrl+c widget so instead we handle it just before printing new prompt
+    if (( _prompt_ctrl_c )); then
+        # cursor up, delete line (old prompt footer)
+        printf '\033[A\033[2K'
+        _prompt_ctrl_c=0
+    fi
+
+       # PROMPT is just symbol; the rest goes into the footer
+     PROMPT="%B${SYMBOL_COLOR}%(#.#.%%)%f %b"
 }
 add-zsh-hook precmd _prompt_precmd
 
-# prevent autosuggestions from rebinding on precmd (would undo our wrapping)
-add-zsh-hook -d precmd _zsh_autosuggest_start 2>/dev/null
-
-# preserve any existing accept-line wrapper (e.g. autosuggestions' clear handler)
-if zle -l accept-line 2>/dev/null; then
-  zle -A accept-line _prompt_orig_accept_line
-fi
 _prompt_zle_accept_line() {
   emulate -L zsh
-  # clear POSTDISPLAY on accept-line so footer is gone before command runs
+  # clear prompt footer (and autocomplete ghost) on accept-line (Enter)
   POSTDISPLAY=
-  if zle -l _prompt_orig_accept_line 2>/dev/null; then
-    zle _prompt_orig_accept_line
-  else
-    zle .accept-line
-  fi
+  zle .accept-line
 }
-zle -N accept-line _prompt_zle_accept_line
-
-_prompt_zle_ctrlc() {
-  emulate -L zsh
-  POSTDISPLAY=
-  # clear autosuggestions state if present (normally done by send-break wrapper)
-  if (( ${+functions[_zsh_autosuggest_clear]} )); then
-    _zsh_autosuggest_clear
-  fi
-  zle .send-break
-  # display fresh prompt
-  zle .reset-prompt
-}
-zle -N _prompt_zle_ctrlc
-bindkey '^C' _prompt_zle_ctrlc
-
-# wrap _zsh_autosuggest_highlight_apply to append prompt footer after ghost text.
-if (( ${+functions[_zsh_autosuggest_highlight_apply]} )); then
-  functions[_zsh_autosuggest_highlight_apply_orig]=$functions[_zsh_autosuggest_highlight_apply]
-  _zsh_autosuggest_highlight_apply() {
-    _zsh_autosuggest_highlight_apply_orig "$@"
-    _prompt_zle_append_footer
-  }
+# autocomplete also clears POSTDISPLAY
+if ! (( ${+functions[_zsh_autosuggest_highlight_apply]} )); then
+  zle -N accept-line _prompt_zle_accept_line
 fi
 
-# zle-line-init: set initial POSTDISPLAY
+# handle Esc + Enter self-insert-unmeta
+_prompt_esc_enter_newline() {
+    emulate -L zsh
+    # default is '\r' which desyncs zle cursor tracking
+    LBUFFER+=$'\n'
+}
+zle -N _prompt_esc_enter_newline
+bindkey '^[^M' _prompt_esc_enter_newline
+
+# set initial POSTDISPLAY
 _prompt_zle_line_init() {
   emulate -L zsh
   _prompt_zle_append_footer
 }
 zle -N zle-line-init _prompt_zle_line_init
 
-# zle-line-pre-redraw: ensure footer after autosuggestions
-_prompt_zle_line_pre_redraw() {
-  emulate -L zsh
-  _prompt_zle_append_footer
-}
-# only register if autosuggestions is not wrapping highlights
-if (( ! ${+functions[_zsh_autosuggest_highlight_apply]} )); then
-  zle -N zle-line-pre-redraw _prompt_zle_line_pre_redraw
-fi
+
 
 # append prompt footer to POSTDISPLAY (preserving ghost text) and set region_highlight
 _prompt_zle_append_footer() {
   emulate -L zsh
   [[ -z "$_prompt" ]] && return 0
 
-  local entry
-  for entry in $_prompt_rh_entries; do
-    region_highlight=("${(@)region_highlight:#$entry}")
+  # skip when accepting a line — the session is ending, no need to append footer
+  [[ $WIDGET = *accept-* ]] && return 0
+
+  # remove old entries (may fail outside ZLE, e.g. TRAPUSR1 signal handler)
+  for pos in $_prompt_rh_positions; do
+    { region_highlight=("${(@)region_highlight:#${pos} *}") }
   done
-  _prompt_rh_entries=()
+  _prompt_rh_positions=()
 
-  # append footer to POSTDISPLAY if not already present
-  if [[ "${POSTDISPLAY}" != *$'\n'"${_prompt}" ]]; then
-    POSTDISPLAY="${POSTDISPLAY}"$'\n'"${_prompt}"
-  fi
+  # strip old footer, keep only ghost text (before first \n)
+  local ghost="${POSTDISPLAY%%$'\n'*}" 2>/dev/null
+  : "${ghost:=}"
+  { POSTDISPLAY="${ghost}"$'\n'"${_prompt}" } 2>/dev/null
 
+    # POSTDISPLAY contains autocomplete ghost + prompt footer
   local -i prompt_start=$(( ${#BUFFER} + ${#POSTDISPLAY} - ${#_prompt} ))
   local -i prompt_end=$(( prompt_start + ${#_prompt} ))
   local -i dir_end=$(( prompt_start + _prompt_dir_len ))
 
   local dir_entry="${prompt_start} ${dir_end} bold,${_prompt_rh_colors[1]}"
-  region_highlight+=("${dir_entry}")
-  _prompt_rh_entries+=("${dir_entry}")
+  { region_highlight+=("${dir_entry}") } 2>/dev/null
+  _prompt_rh_positions+=("${prompt_start} ${dir_end}")
 
   if (( ${#_prompt_rh_colors[@]} > 1 )); then
     local -i branch_start=$(( dir_end + 1 ))
     local branch_entry="${branch_start} ${prompt_end} bold,${_prompt_rh_colors[2]}"
-    region_highlight+=("${branch_entry}")
-    _prompt_rh_entries+=("${branch_entry}")
+    { region_highlight+=("${branch_entry}") } 2>/dev/null
+    _prompt_rh_positions+=("${branch_start} ${prompt_end}")
   fi
 }
+
+# update region_highlight positions on every keystroke
+_prompt_zle_pre_redraw() {
+    emulate -L zsh
+    [[ $WIDGET = *accept-* ]] && return 0
+
+    # remove old highlight entries
+    for pos in $_prompt_rh_positions; do
+    { region_highlight=("${(@)region_highlight:#${pos} *}") }
+    done
+    _prompt_rh_positions=()
+
+    # recompute positions from current BUFFER (which may have changed since hook ran)
+    local -i prompt_start=$(( ${#BUFFER} + ${#POSTDISPLAY} - ${#_prompt} ))
+    local -i prompt_end=$(( prompt_start + ${#_prompt} ))
+    local -i dir_end=$(( prompt_start + _prompt_dir_len ))
+
+    local dir_entry="${prompt_start} ${dir_end} bold,${_prompt_rh_colors[1]}"
+    { region_highlight+=("${dir_entry}") } 2>/dev/null
+    _prompt_rh_positions+=("${prompt_start} ${dir_end}")
+
+    if (( ${#_prompt_rh_colors[@]} > 1 )); then
+    local -i branch_start=$(( dir_end + 1 ))
+    local branch_entry="${branch_start} ${prompt_end} bold,${_prompt_rh_colors[2]}"
+    { region_highlight+=("${branch_entry}") } 2>/dev/null
+    _prompt_rh_positions+=("${branch_start} ${prompt_end}")
+    fi
+}
+
+# prevent autosuggestions from rebinding on precmd — let it bind once on first precmd only
+ZSH_AUTOSUGGEST_MANUAL_REBIND=1
+
+
+# append prompt footer after ghost text
+if (( ${+functions[_zsh_autosuggest_highlight_apply]} )); then
+  functions[_zsh_autosuggest_highlight_apply_orig]=$functions[_zsh_autosuggest_highlight_apply]
+  _zsh_autosuggest_highlight_apply() {
+    _zsh_autosuggest_highlight_apply_orig "$@"
+    _prompt_zle_append_footer
+  }
+else
+    # when autosuggest absent, update region_highlight on every keystroke via pre-redraw
+    zle -N zle-line-pre-redraw _prompt_zle_pre_redraw
+fi
+
+# intercept autosuggest accept/partial_accept/execute and strip out prompt footer
+if (( ${+functions[_zsh_autosuggest_accept]} )); then
+    # prevent infinite loop when file sourced again
+    if (( ! ${+functions[_prompt_autosuggest_accept_orig]} )); then
+        functions[_prompt_autosuggest_accept_orig]=$functions[_zsh_autosuggest_accept]
+  fi
+  _zsh_autosuggest_accept() {
+    POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
+    _prompt_autosuggest_accept_orig "$@"
+  }
+fi
+
+if (( ${+functions[_zsh_autosuggest_partial_accept]} )); then
+    if (( ! ${+functions[_prompt_autosuggest_partial_accept_orig]} )); then
+  functions[_prompt_autosuggest_partial_accept_orig]=$functions[_zsh_autosuggest_partial_accept]
+  fi
+  _zsh_autosuggest_partial_accept() {
+    POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
+    _prompt_autosuggest_partial_accept_orig "$@"
+  }
+fi
+
+if (( ${+functions[_zsh_autosuggest_execute]} )); then
+    if (( ! ${+functions[_prompt_autosuggest_execute_orig]} )); then
+  functions[_prompt_autosuggest_execute_orig]=$functions[_zsh_autosuggest_execute]
+  fi
+  _zsh_autosuggest_execute() {
+    POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
+    _prompt_autosuggest_execute_orig "$@"
+  }
+fi
+
+if (( ${+functions[_zsh_autosuggest_modify]} )); then
+    if (( ! ${+functions[_prompt_autosuggest_modify_orig]} )); then
+        functions[_prompt_autosuggest_modify_orig]=$functions[_zsh_autosuggest_modify]
+    fi
+    _zsh_autosuggest_modify() {
+        [[ $WIDGET = *accept-* ]] && POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
+        _prompt_autosuggest_modify_orig "$@"
+    }
+fi
 
 # cleanup on exit - removes temp file, kills async, no "bg process running" warning
 _prompt_cleanup() {
@@ -389,7 +480,3 @@ _prompt_cleanup() {
   [[ $_prompt_git_last_pid -gt 0 ]] && kill -- -$_prompt_git_last_pid 2>/dev/null
 }
 add-zsh-hook zshexit _prompt_cleanup
-
-# TODO - fix autocomplete
-# TODO - when pressing up history, footer loses color
-# TODO - check if untracked works
