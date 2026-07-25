@@ -27,56 +27,13 @@ _prompt_git_stashed=0
 _prompt_git_last_pid=0
 _prompt_async_counter=0
 _prompt_async_out="/tmp/prompt_async_out_$$"
-_prompt_rendering=0
+_prompt_rerendering=0
 _prompt_last_exit=0
 _prompt_ctrl_c=0
 _prompt=""
 _prompt_dir_len=0
 _prompt_rh_colors=()
 _prompt_rh_positions=()
-
-# Handle async updates (git untracked)
-TRAPUSR1() {
-    emulate -L zsh
-    _prompt_rendering=1
-    _prompt_precmd
-    _prompt_rendering=0
-
-    # Immediate terminal update: rewrite footer with new colors via printf.
-    # Only when _prompt is set (after first prompt) and we have colors.
-    if [[ -n "$_prompt" ]]; then
-        local dir_color="${_prompt_rh_colors[1]#fg=}"
-        local -i target_col=$(( 3 + ${#BUFFER} ))
-        if [[ -n "$_prompt_branch_out" ]]; then
-            local branch_color="${_prompt_rh_colors[2]#fg=}"
-            # \033[1B     - cursor down to footer row
-            # \033[2K     - clear footer line
-            # \033[G      - cursor to column 1
-            # \033[1m     - bold
-            # \033[38;5;%dm - foreground color (directory)
-            # \033[0m     - reset attributes
-            # \033[1m     - bold again (branch)
-            # \033[38;5;%dm - foreground color (branch)
-            # \033[0m     - reset attributes
-            # \033[A      - cursor up to prompt row
-            # \033[%dG    - cursor to absolute column (after "% " + buffer)
-            printf '\033[1B\033[2K\033[G\033[1m\033[38;5;%dm%s\033[0m \033[1m\033[38;5;%dm%s\033[0m\033[A\033[%dG' \
-                "$dir_color" "$_prompt_dir_out" "$branch_color" "$_prompt_branch_out" "$target_col"
-        else
-            # Same sequence without branch (no git repo)
-            printf '\033[1B\033[2K\033[G\033[1m\033[38;5;%dm%s\033[0m\033[A\033[%dG' \
-                "$dir_color" "$_prompt_dir_out" "$target_col"
-        fi
-    fi
-}
-
-# Handle Ctrl+C
-TRAPINT() {
-    emulate -L zsh
-    _prompt_ctrl_c=1
-    _prompt_last_exit=$(( 128 + $1 ))
-    return $_prompt_last_exit
-}
 
 # Manually walk up tree to find .git/
 # Faster than git commands
@@ -274,7 +231,7 @@ autoload -Uz add-zsh-hook
 _prompt_precmd() {
     local -i last_exit=$?  # capture exit status before anything changes it
     emulate -L zsh
-    if (( ! _prompt_rendering )); then
+    if (( ! _prompt_rerendering )); then
         _prompt_last_exit=$last_exit
     fi
 
@@ -305,11 +262,10 @@ _prompt_precmd() {
     local branch_raw=""
     if _prompt_git_branch; then
         branch_raw="$_prompt_branch_out"
-        if (( ! _prompt_rendering )); then
+        if (( ! _prompt_rerendering )); then
             _prompt_async_git_start "$PWD"
         fi
     fi
-    # _prompt_rendering=0  # reset flag: _prompt_last_exit + async check done; next precmd captures $? normally
 
     local -i dir_cap
     local -i branch_cap
@@ -387,10 +343,6 @@ _prompt_update_region_highlight() {
 # Append prompt footer to POSTDISPLAY (preserving ghost text) and set region_highlight
 _prompt_zle_append_footer() {
     emulate -L zsh
-    if [[ -z "$_prompt" ]]; then
-        return 0
-    fi
-
     # skip when accepting a line - the session is ending, no need to append footer
     if [[ $WIDGET = *accept-* ]]; then
         return 0
@@ -498,6 +450,48 @@ if (( ${+functions[_zsh_autosuggest_modify]} )); then
         _prompt_autosuggest_modify_orig "$@"
     }
 fi
+
+# Handle async updates (git untracked)
+TRAPUSR1() {
+    emulate -L zsh
+    _prompt_rerendering=1
+    _prompt_precmd
+    _prompt_rerendering=0
+
+    # zle prevents writes from signal handlers - have to wait for the next keystroke
+
+    # # Immediate terminal update: rewrite footer with new colors via printf.
+    # local dir_color="${_prompt_rh_colors[1]#fg=}"
+    # local -i target_col=$(( 3 + ${#BUFFER} ))
+    # if [[ -n "$_prompt_branch_out" ]]; then
+    #     local branch_color="${_prompt_rh_colors[2]#fg=}"
+    #     # \033[1B     - cursor down to footer row
+    #     # \033[2K     - clear footer line
+    #     # \033[G      - cursor to column 1
+    #     # \033[1m     - bold
+    #     # \033[38;5;%dm - foreground color (directory)
+    #     # \033[0m     - reset attributes
+    #     # \033[1m     - bold again (branch)
+    #     # \033[38;5;%dm - foreground color (branch)
+    #     # \033[0m     - reset attributes
+    #     # \033[A      - cursor up to prompt row
+    #     # \033[%dG    - cursor to absolute column (after "% " + buffer)
+    #     printf '\033[1B\033[2K\033[G\033[1m\033[38;5;%dm%s\033[0m \033[1m\033[38;5;%dm%s\033[0m\033[A\033[%dG' \
+    #         "$dir_color" "$_prompt_dir_out" "$branch_color" "$_prompt_branch_out" "$target_col"
+    # else
+    #     # Same sequence without branch (no git repo)
+    #     printf '\033[1B\033[2K\033[G\033[1m\033[38;5;%dm%s\033[0m\033[A\033[%dG' \
+    #         "$dir_color" "$_prompt_dir_out" "$target_col"
+    # fi
+}
+
+# Handle Ctrl+C
+TRAPINT() {
+    emulate -L zsh
+    _prompt_ctrl_c=1
+    _prompt_last_exit=$(( 128 + $1 ))
+    return $_prompt_last_exit
+}
 
 # Cleanup on exit - removes temp file, kills async, no "bg process running" warning
 _prompt_cleanup() {
