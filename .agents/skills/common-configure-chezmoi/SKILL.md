@@ -7,15 +7,6 @@ description: Use when touching dotfiles, installing global tools/deps, or modify
 
 Manage dotfiles and machine setup with [chezmoi](https://www.chezmoi.io/).
 
-## When to use
-
-- Dotfile edit (`~/.config/`, `~/.zshrc`, `~/.gitconfig`, etc.)
-- Global tool/dep install (brew, npm -g, cargo, pipx, uv)
-- Config/dependency source code changes that should be reproducible
-- New machine bootstrap
-
-Before acting, ask: _"Should this be same on all machines?"_ If yes, use this skill.
-
 ## 1. Before you start — read the docs
 
 Fetch relevant doc page before making changes:

@@ -5,6 +5,11 @@
 # <working_dir> <git_branch>
 # ```
 
+# TODO bug: after cd into a git dir,
+# and then type start of a command to trigger autocomplete suggestion,
+# and then press right arrow to accept the suggestion,
+# the filled out command has colors leaked from the prompt footer
+
 # Short-circuit prompt when non-interactive.
 # Tests can set _PROMPT_FORCE_LOAD=1 to bypass.
 if [[ (! -o interactive || ! -o MONITOR) && -z $_PROMPT_FORCE_LOAD ]]; then
@@ -185,20 +190,22 @@ function _prompt_async_git_start() {
             if (( $? > 1 )); then
                 exit
             fi
-            while IFS= read -r line; do
-                if [[ ${line[1]} != ' ' && ${line[1]} != '?' ]]; then
-                    staged=1
-                fi
-                if [[ ${line[2]} != ' ' && ${line[2]} != '?' ]]; then
-                    unstaged=1
-                fi
-                if [[ ${line} = '??'* ]]; then
-                    untracked=1
-                fi
-                if (( staged && unstaged )); then
-                    break
-                fi
-            done <<< "$status_output"
+            if [[ -n $status_output ]]; then
+                while IFS= read -r line; do
+                    if [[ ${line[1]} != ' ' && ${line[1]} != '?' ]]; then
+                        staged=1
+                    fi
+                    if [[ ${line[2]} != ' ' && ${line[2]} != '?' ]]; then
+                        unstaged=1
+                    fi
+                    if [[ ${line} = '??'* ]]; then
+                        untracked=1
+                    fi
+                    if (( staged && unstaged )); then
+                        break
+                    fi
+                done <<< "$status_output"
+            fi
         fi
         if (( staged + unstaged + untracked == 0 )); then
             git rev-parse --verify --quiet refs/stash &>/dev/null
