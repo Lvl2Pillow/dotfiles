@@ -64,6 +64,73 @@ All: `[[ $WIDGET = *accept-* ]] && POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"` then ca
 
 The `modify` override is conditional (`[[ $WIDGET = *accept-* ]]`) so normal typing (self-insert, etc.) preserves the footer.
 
+## Accept-and-Hold / Modify Widget Stale Footer
+
+### Root cause
+
+`accept-and-hold` goes through the `modify` wrapper (not `clear` like `accept-line`).
+`_zsh_autosuggest_modify` **restores POSTDISPLAY** after the original widget returns:
+
+```zsh
+_zsh_autosuggest_modify() {
+    local orig_postdisplay="$POSTDISPLAY"   # saves footer "\n~/.zsh"
+    POSTDISPLAY=
+    _zsh_autosuggest_invoke_original_widget $@   # done=1
+    ...
+    POSTDISPLAY="$orig_postdisplay"  # RESTORES footer!
+}
+```
+
+After restore, the wrapper calls `zle -R`. zrefresh sees POSTDISPLAY="\n~/.zsh" and **draws the footer** on row 1 (instead of clearing it). Then trashzle's moveto goes to row 1 (now occupied by footer), extra `\n` from accept-and-hold's buffer-stack push moves to row 2, and command output lands on row 2 — leaving the footer fully intact at row 1.
+
+**Compare with `accept-line`** (goes through `clear` wrapper):
+- `_zsh_autosuggest_clear`: `POSTDISPLAY=` (unconditional, no restore)
+- Our override strips footer → `POSTDISPLAY=""` 
+- `zle -R` zrefresh sees POSTDISPLAY="" → outputs `\033[1B\r\033[K\033[A` (cursor down + clear line + cursor up) — **clears the old footer row**
+- trashzle moveto to row 1 (now empty) → command output "88" lands cleanly
+
+### The `\x1b[1B\r` difference
+
+Both accept-line and accept-and-hold produce `\x1b[1B\r` (moveto to row 1). The difference is **what `zle -R` does before it**:
+
+- **accept-line**: POSTDISPLAY="" → zrefresh **clears** row 1 with `\033[K` → empty row → command output overwrites nothing important
+- **accept-and-hold**: POSTDISPLAY="\n~/.zsh" → zrefresh **redraws** row 1 with footer → occupied row → extra `\n` pushes past it → stale footer survives
+
+### The fix
+
+Override `_zsh_autosuggest_modify` to strip the footer **before** the original saves `orig_postdisplay`:
+
+```zsh
+_zsh_autosuggest_modify() {
+    [[ $WIDGET = *accept-* ]] && POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
+    _prompt_autosuggest_modify_orig "$@"
+}
+```
+
+Now `orig_postdisplay` is "" (or just ghost text without footer). After the widget runs, restore puts back "" → `zle -R` clears the old footer → no stale row.
+
+### Affected widgets
+
+Only widgets that go through `modify` AND cause zle to exit (`done=1`):
+
+1. **`accept-and-hold`** — confirmed primary case
+2. **`accept-and-infer-next-history`** — same path (default binding `^X^N`)
+3. **`accept-line-and-down-history`** — same path (default binding `^O`)
+
+All three match `[[ $WIDGET = *accept-* ]]` — one check covers all.
+
+Non-exiting modify widgets (self-insert, backward-delete-char, etc.) are unaffected — `$WIDGET != *accept-*` → footer preserved normally.
+
+`accept-line` goes through `clear` wrapper, not `modify` — unaffected.
+
+### Pre-existing `*accept-*` check
+
+The existing `[[ $WIDGET = *accept-* ]] && return 0` in `_prompt_zle_append_footer` is **necessary but not sufficient** for the stale footer bug:
+- **Necessary**: prevents our hook from re-adding the footer after the modify restore (would double-write)
+- **Not sufficient**: doesn't prevent `_zsh_autosuggest_modify` from restoring the footer internally, and doesn't prevent `zle -R` / trashzle from rendering the restored value
+
+The `_zsh_autosuggest_modify` override closes the gap by stripping the footer at the source (before restore), making the existing `*accept-*` check sufficient.
+
 ## Ctrl+C Signal Handling
 
 ### Key insight: send-break widget is dead code for Ctrl+C
@@ -186,7 +253,7 @@ After TRAPINT's printf clears the footer and moves cursor, trashzle runs:
 - TRAPINT sets `_prompt_ctrl_c=1` (with underscore before `c`). Precmd checks `_prompt_ctrlc` (no underscore). The `printf '\033[A\033[2K'` cleanup in precmd never fires. Old footer persists until next keystroke. **Must unify variable names.**
 
 ### Autosuggest clear widget stale region_highlight
-- Autosuggest categorizes widgets as "clear", "accept", "execute", "partial_accept", or "modify" (catch-all).
+- Autosuggest categorizes widgets into 5 actions: `clear`, `accept`, `execute`, `partial_accept`, `modify`.
 - Our `_prompt_zle_append_footer` runs inside `_zsh_autosuggest_highlight_apply`, which is called BEFORE the original widget is invoked for "clear" category widgets.
 - "Clear" widgets include: `up-line-or-history`, `down-line-or-history`, all history-search variants, and others. These CHANGE `$BUFFER`.
 - Our region_highlight positions are computed from the OLD buffer, then the widget changes the buffer. Positions become stale until next keystroke.
@@ -194,10 +261,17 @@ After TRAPINT's printf clears the footer and moves cursor, trashzle runs:
   - Replace autosuggest clear wrappers with our own
   - Use `zle-line-pre-redraw` hook as safety net (fires after every widget completes)
 
-### send-break (^G) stale footer
+### Accept-and-hold stale footer (modify widget POSTDISPLAY restore)
+- `accept-and-hold` goes through `modify` wrapper, not `clear` (like `accept-line`).
+- `_zsh_autosuggest_modify` restores POSTDISPLAY after the widget returns → `zle -R` redraws the footer → trashzle renders it → extra `\n` from accept-and-hold leaves it stale on row 1.
+- Same issue affects `accept-and-infer-next-history` and `accept-line-and-down-history`.
+- Fix: override `_zsh_autosuggest_modify` to strip footer for `*accept-*` widgets before original saves `orig_postdisplay`.
+
+### send-break (^G / ^[^[) stale footer
 - `^G` is bound to `send-break`. No custom wrapper exists in current prompt.
 - Built-in `send-break` does NOT clear POSTDISPLAY. After `^G`, footer text persists on screen even though the buffer was cleared.
 - Next keystroke triggers `_prompt_zle_append_footer` via autosuggest → correct footer is set. But between `^G` and next keystroke, stale footer is visible.
+- Separate from accept-and-hold stale footer (different root cause — `send-break` doesn't go through `_zsh_autosuggest_modify`'s restore path).
 - Fix: register `zle -N send-break` with `POSTDISPLAY=; zle .send-break`.
 
 ### Autosuggest dependency
