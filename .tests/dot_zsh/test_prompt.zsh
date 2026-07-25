@@ -176,6 +176,31 @@ assert "${_prompt_rh_colors[*]}" "fg=135 fg=112" "stash: lime"
 run_precmd 0 "$clean" 1 1 1 1
 assert "${_prompt_rh_colors[*]}" "fg=135 fg=88" "all flags: untracked wins"
 
+# Stale globals persist across cd until async completes — intended behavior.
+# When entering a clean repo with stale _prompt_git_untracked=1 from previous dir,
+# the footer briefly shows dark red (88) until async callback overwrites with green.
+pushd -q "$clean"
+_prompt_git_untracked=1
+_prompt_rerendering=0
+COLUMNS=80
+_prompt_precmd
+popd -q
+assert "${_prompt_rh_colors[*]}" "fg=135 fg=88" "stale globals: dark red shown until async completes"
+_prompt_git_untracked=0
+
+# ===================================================================
+# _prompt_git_branch — detached HEAD
+# ===================================================================
+echo "=== Detached HEAD ==="
+
+local detached="$TMPDIR/detached"
+setup_git_repo "$detached"
+pushd -q "$detached"
+git checkout --detach HEAD >/dev/null 2>&1
+_prompt_git_branch
+assert "$_prompt_branch_out" "@${$(git rev-parse --short HEAD):0:7}" "detached HEAD: @<hash>"
+popd -q
+
 # ===================================================================
 # Report
 # ===================================================================
