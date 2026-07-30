@@ -5,7 +5,7 @@
         if command -v fzf &>/dev/null; then \
             git config --name-only --get-regexp '^alias\\.' | \
                 sed 's/^alias\\.//' | \
-                fzf --preview=\"git config --get alias.{} | perl -pe 's/\\t(\\t*)/\\n\\$1/g'\" \
+                fzf --preview=\"git config --get alias.{} | perl -pe 's/    ( *)/\\n\\$1/g'\" \
                     --preview-window=right:80%:wrap | \
                 xargs -r sh -c 'printf \"git %s (copied to clipboard)\\n\" \"$1\"; printf \"git %s\" \"$1\" | pbcopy' _; \
         else \

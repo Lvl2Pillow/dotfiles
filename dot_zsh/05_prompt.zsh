@@ -5,11 +5,6 @@
 # <working_dir> <git_branch>
 # ```
 
-# TODO bug: after cd into a git dir,
-# and then type start of a command to trigger autocomplete suggestion,
-# and then press right arrow to accept the suggestion,
-# the filled out command has colors leaked from the prompt footer
-
 # Short-circuit prompt when non-interactive.
 # Tests can set _PROMPT_FORCE_LOAD=1 to bypass.
 if [[ (! -o interactive || ! -o MONITOR) && -z $_PROMPT_FORCE_LOAD ]]; then
@@ -312,8 +307,11 @@ _prompt_update_region_highlight() {
     # remove old prompt entries by memo token (zsh 5.9+)
     # memo survives auto-shifting on any buffer edit and has zero visual impact
     region_highlight=("${(@)region_highlight:#*memo=prompt-footer}")
+    region_highlight=("${(@)region_highlight:#*memo=prompt-bold}")
 
     local -i prompt_start=$(( ${#BUFFER} + ${#POSTDISPLAY} - ${#_prompt} ))
+    region_highlight+=("0 ${prompt_start} bold memo=prompt-bold")
+
     local -i prompt_end=$(( prompt_start + ${#_prompt} ))
     local -i dir_end=$(( prompt_start + _prompt_dir_len ))
 
