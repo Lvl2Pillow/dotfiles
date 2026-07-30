@@ -31,6 +31,8 @@
     unstage = reset HEAD -- .
     # Force push but abort if it will overwrite newly discovered commits
     jedi = push --force-with-lease
+    # Reset cache
+    invalidate = "!git update-index --no-fsmonitor --no-untracked-cache && git update-index --fsmonitor --untracked-cache"
 
 [blame]
     coloring = highlightRecent
