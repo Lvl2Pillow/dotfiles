@@ -1,12 +1,13 @@
 # https://git-scm.com/docs/git-config
 
 [alias]
+    # Note: fzf will parse `{4}`, so we need to escape it
     alias = "!\
     f() {\
         if command -v fzf &>/dev/null; then\
             git config --name-only --get-regexp '^alias\\.' |\
                 sed 's/^alias\\.//' |\
-                fzf --preview=\"git config --get alias.{} | sed -E 's/(\\t| {4})([ \\t]*)/\\n\\2/g'\"\
+                fzf --preview=\"git config --get alias.{} | sed -E 's/(\\t| \\{4})([ \\t]*)/\\n\\2/g'\"\
                     --preview-window=right:80%:wrap |\
                 xargs -r sh -c 'printf \"git %s (copied to clipboard)\\n\" \"$1\"; printf \"git %s\" \"$1\" | pbcopy' _;\
         else\
