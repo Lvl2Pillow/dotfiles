@@ -4,6 +4,9 @@
 # <symbol> <cursor> <buffer>\n
 # <working_dir> <git_branch>
 # ```
+#
+# zle draws the completion list below the whole line, so while a list is up
+# the footer hides; it returns when the list dismisses.
 
 # Short-circuit prompt when non-interactive.
 # Tests can set _PROMPT_FORCE_LOAD=1 to bypass.
@@ -26,6 +29,7 @@ _prompt_git_untracked=0
 _prompt_git_stashed=0
 _prompt_git_last_pid=0
 _prompt_async_counter=0
+_prompt_menu_active=0
 _prompt_zle_fd_registered=0
 _prompt_rerendering=0
 _prompt_last_exit=0
@@ -327,28 +331,64 @@ _prompt_update_region_highlight() {
     fi
 }
 
-# Append prompt footer to POSTDISPLAY (preserving ghost text) and set region_highlight
+# True if $1 can display the completion list (menu-completion widgets).
+_prompt_is_completion_widget() {
+    if [[ $1 == *complete* || $1 == *list* ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# zle only clears the list area when clearlist is set
+# `zle -R -c` forces the clear without touching the main display.
+_prompt_zle_clear_list_area() {
+    zle -R -c 2>/dev/null
+}
+
+# Append footer to POSTDISPLAY (preserving ghost) + recompute region_highlight.
+# List clearing lives in _prompt_zle_restore_footer.
 _prompt_zle_append_footer() {
     emulate -L zsh
     # skip when accepting a line - the session is ending, no need to append footer
-    if [[ $WIDGET = *accept-* ]]; then
+    if [[ $WIDGET == *accept-* ]]; then
         return 0
     fi
-
     # strip old footer, keep only ghost text (before first \n)
     local ghost="${POSTDISPLAY%%$'\n'*}"
     POSTDISPLAY="${ghost}"$'\n'"${_prompt}"
-
     _prompt_update_region_highlight
 }
 
-# Update region_highlight positions on every keystroke
+# After the completion list is dismissed: drop menu state, re-append the
+# footer, clear the list rows.
+_prompt_zle_restore_footer() {
+    emulate -L zsh
+    local was_menu=0
+    if (( _prompt_menu_active )); then
+        _prompt_menu_active=0
+        was_menu=1
+    fi
+    _prompt_zle_append_footer
+    if (( was_menu )); then
+        _prompt_zle_clear_list_area
+    fi
+}
+
+# Pre-redraw (no-autosuggest path). Steady state: reposition region_highlight.
+# On a transition (list dismissed), restore the footer + clear rows.
 _prompt_zle_pre_redraw() {
     emulate -L zsh
-    if [[ $WIDGET = *accept-* ]]; then
+    # $WIDGET here is the hook itself; use $LASTWIDGET for the trigger
+    if [[ $LASTWIDGET == *accept-* ]]; then
         return 0
     fi
-
+    if (( _prompt_menu_active )); then
+        if _prompt_is_completion_widget "$LASTWIDGET"; then
+            return 0
+        fi
+        _prompt_zle_restore_footer
+        return 0
+    fi
     _prompt_update_region_highlight
 }
 
@@ -379,6 +419,7 @@ _prompt_zle_accept_line() {
     emulate -L zsh
     # clear prompt footer (and autocomplete ghost) on accept-line (Enter)
     POSTDISPLAY=
+    _prompt_menu_active=0
     zle .accept-line
 }
 # autocomplete also clears POSTDISPLAY
@@ -398,6 +439,7 @@ bindkey '^[^M' _prompt_esc_enter_newline
 # Set initial POSTDISPLAY and register zle -F once
 _prompt_zle_line_init() {
     emulate -L zsh
+    _prompt_menu_active=0
     _prompt_zle_append_footer
     if (( ! _prompt_zle_fd_registered )); then
         zle -N _prompt_async_callback
@@ -415,7 +457,13 @@ if (( ${+functions[_zsh_autosuggest_highlight_apply]} )); then
     functions[_zsh_autosuggest_highlight_apply_orig]=$functions[_zsh_autosuggest_highlight_apply]
     _zsh_autosuggest_highlight_apply() {
         _zsh_autosuggest_highlight_apply_orig "$@"
-        _prompt_zle_append_footer
+        if (( _prompt_menu_active )) && _prompt_is_completion_widget "$WIDGET"; then
+            # autosuggest's modify wrapper re-pushed the footer into
+            # POSTDISPLAY; strip it again
+            POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
+            return 0
+        fi
+        _prompt_zle_restore_footer
     }
 else
     # when autosuggest absent, update region_highlight on every keystroke via pre-redraw
@@ -431,6 +479,9 @@ if (( ${+functions[_zsh_autosuggest_accept]} )); then
     _zsh_autosuggest_accept() {
         POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
         _prompt_autosuggest_accept_orig "$@"
+        # orig accept never triggers highlight_apply, so the footer stripped
+        # above would stay gone; restore it now.
+        _prompt_zle_restore_footer
     }
 fi
 
@@ -441,6 +492,7 @@ if (( ${+functions[_zsh_autosuggest_partial_accept]} )); then
     _zsh_autosuggest_partial_accept() {
         POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
         _prompt_autosuggest_partial_accept_orig "$@"
+        _prompt_zle_restore_footer
     }
 fi
 
@@ -464,6 +516,59 @@ if (( ${+functions[_zsh_autosuggest_modify]} )); then
         fi
         _prompt_autosuggest_modify_orig "$@"
     }
+fi
+
+# Completion list renders below the whole line; hide the footer while it
+# is up. _prompt_zle_restore_footer puts it back when the list dismisses.
+_prompt_completion_wrap() {
+    emulate -L zsh
+    _prompt_menu_active=1
+    _prompt_capture_ran=0
+    _prompt_list_shown=0
+    # compstate is only valid mid-completion: capture whether a list will show
+    local -a +h comppostfuncs
+    comppostfuncs=(_prompt_complist_capture)
+    # strip footer (and stale footer highlight), keep only ghost text
+    POSTDISPLAY="${POSTDISPLAY%%$'\n'*}"
+    region_highlight=("${(@)region_highlight:#*memo=prompt-footer}")
+    zle "_prompt_orig_${WIDGET}"
+    if (( _prompt_capture_ran && ! _prompt_list_shown )); then
+        _prompt_menu_active=0
+        _prompt_zle_append_footer
+    fi
+}
+
+# comppostfuncs hook: set 1 when a list or y/n question will display.
+_prompt_complist_capture() {
+    _prompt_capture_ran=1
+    _prompt_list_shown=0
+    [[ $compstate[list] == *list* ]] && _prompt_list_shown=1
+    (( compstate[nmatches] > 1 )) && _prompt_list_shown=1
+}
+
+for _prompt_cw in \
+    expand-or-complete expand-or-complete-prefix complete-word \
+    menu-complete reverse-menu-complete menu-expand-or-complete \
+    accept-and-menu-complete complete-or-list list-choices list-expand \
+    delete-char-or-list _complete_help complete-in-word \
+    history-complete-newer history-complete-older; do
+    if zle -la "$_prompt_cw" 2>/dev/null && ! zle -la "_prompt_orig_${_prompt_cw}" 2>/dev/null; then
+        zle -A "$_prompt_cw" "_prompt_orig_${_prompt_cw}" && \
+            zle -N "$_prompt_cw" _prompt_completion_wrap
+    fi
+done
+unset _prompt_cw
+
+# The y/n answer is consumed inside getzlequery without running a widget;
+# restore the footer before clear-screen redraws, otherwise the redraw
+# renders the stale hidden-footer layout.
+_prompt_zle_clear_screen() {
+    emulate -L zsh
+    _prompt_zle_restore_footer
+    zle _prompt_orig_clear-screen
+}
+if zle -la clear-screen 2>/dev/null && ! zle -la _prompt_orig_clear-screen 2>/dev/null; then
+    zle -A clear-screen _prompt_orig_clear-screen && zle -N clear-screen _prompt_zle_clear_screen
 fi
 
 # Handle Ctrl+C

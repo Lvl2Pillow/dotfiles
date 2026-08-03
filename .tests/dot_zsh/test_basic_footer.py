@@ -191,13 +191,21 @@ def run():
                 x_row = i
                 x_col = line.find('x')
                 break
+        # The active prompt is the one on the typed char's row; a stale '%'
+        # may linger on an earlier row (prompt redraw artifact), so prefer
+        # the % adjacent to x.
         pct_row = -1
         pct_col = -1
-        for i, line in enumerate(term.display):
-            if '%' in line:
-                pct_row = i
-                pct_col = line.find('%')
-                break
+        if x_row >= 0:
+            c = term.display[x_row].find('%')
+            if c >= 0:
+                pct_row, pct_col = x_row, c
+        if pct_row < 0:
+            for i, line in enumerate(term.display):
+                if '%' in line:
+                    pct_row = i
+                    pct_col = line.find('%')
+                    break
 
         if x_row < 0:
             results.append(('007 cursor position', False, 'x not found'))
@@ -224,7 +232,14 @@ def run():
         term2 = MiniTerm(80, 10)
         term2.feed(out2)
         y_pos = term2.find_text('y')
-        pct2 = term2.find_text('%')
+        # prefer the % on the y row (active prompt), like 007
+        pct2 = None
+        if y_pos:
+            c = term2.display[y_pos[0]].find('%')
+            if c >= 0:
+                pct2 = (y_pos[0], c)
+        if pct2 is None:
+            pct2 = term2.find_text('%')
         if y_pos and pct2 and y_pos[0] == pct2[0]:
             results.append(('010 cursor on prompt row after cd', True,
                 f'y at row {y_pos[0]}, % at row {pct2[0]}'))

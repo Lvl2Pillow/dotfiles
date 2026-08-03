@@ -7,7 +7,13 @@ Single spawn. All editing operations in one session.
 """
 import os, sys, pty, select, time, re, subprocess, tempfile, shutil
 
+# Session-wide byte accumulator: MiniTerm assertions that need the prompt
+# symbol must replay the whole session (zle only emits screen diffs, so the
+# prompt row may not be re-emitted in a partial window).
+_session = {'data': b''}
+
 def read_all(fd, timeout=0.5):
+    global _session
     out = b''
     while True:
         r, _, _ = select.select([fd], [], [], timeout)
@@ -17,6 +23,7 @@ def read_all(fd, timeout=0.5):
             if not c: break
             out += c
         except: break
+    _session['data'] += out
     return out
 
 def poll_for(fd, check_fn, timeout=5.0, interval=0.05):
@@ -372,12 +379,64 @@ def run():
             f'clean: {text_tab_clean[-80:]!r}'))
 
         # Tab again to verify a second completion keeps footer
+        os.write(fd, b'\x15')  # Ctrl+U to clear any stale buffer
+        time.sleep(0.1)
+        read_all(fd, 0.1)
         os.write(fd, b'cd /tm')
         time.sleep(0.2)
         read_all(fd, 0.15)
-        os.write(fd, b'\t\t')  # Tab x2 (may show menu)
+        # --- 012a: first Tab completes /tm -> /tmp/ uniquely: no list is
+        # rendered, so the footer must stay visible. Bug: the wrap hid the
+        # footer before every completion, so it vanished on a unique insert
+        # (only visible with autosuggest, whose zle -R clears the stale row).
+        os.write(fd, b'\t')
         time.sleep(0.5)
         read_all(fd, 0.3)
+        t1_mark = len(_session['data'])
+        term_t1 = MiniTerm(80, 10)
+        term_t1.feed(_session['data'][:t1_mark])
+        # the footer elides the middle of long paths, so match the unique
+        # random suffix instead of the full repo path
+        repo_suffix = dirty_repo.rsplit('_', 1)[-1]
+        t1_footer = any(repo_suffix in r for r in term_t1.display)
+        results.append(('012a unique Tab inserts, footer stays', t1_footer,
+                        'footer hidden after unique Tab (no list shown)'))
+        os.write(fd, b'\t')  # second Tab: /tmp list -> y/n question
+        time.sleep(0.5)
+        read_all(fd, 0.3)
+        # --- 012b: y/n question state: footer must be hidden ---
+        # Bug (autosuggest): the completion restored the footer text into
+        # POSTDISPLAY mid-completion, so the footer stayed visible (grey)
+        # during the y/n question instead of hiding.
+        q_mark = len(_session['data'])
+        term_q = MiniTerm(80, 10)
+        term_q.feed(_session['data'][:q_mark])
+        q_visible = any('do you wish' in r for r in term_q.display)
+        q_footer = any(repo_suffix in r for r in term_q.display)
+        if q_visible:
+            results.append(('012b y/n question: footer hidden', not q_footer,
+                            'footer visible during question'))
+        else:
+            results.append(('012b y/n question: footer hidden', True,
+                            'no y/n question shown (env)'))
+        # first Ctrl+L may be swallowed by the y/n question ('n' answer);
+        # the second clear-screen always runs as a widget, clearing the menu
+        # state and restoring the footer
+        os.write(fd, b'\x0c')
+        time.sleep(0.3)
+        read_all(fd, 0.2)
+        # --- 012c: right after the 'n' answer the footer must be hidden ---
+        # (the bug drew it grey via autosuggest's restored POSTDISPLAY)
+        n_mark = len(_session['data'])
+        term_n = MiniTerm(80, 10)
+        term_n.feed(_session['data'][:n_mark])
+        n_footer = any(repo_suffix in r for r in term_n.display)
+        if q_visible:
+            results.append(('012c after n answer: footer hidden (not grey)', not n_footer,
+                            'grey footer visible after n'))
+        else:
+            results.append(('012c after n answer: footer hidden (not grey)', True,
+                            'no y/n question shown (env)'))
         os.write(fd, b'\x0c')
         time.sleep(0.3)
         out_tab2 = read_all(fd, 0.3)
@@ -386,16 +445,27 @@ def run():
         results.append(('012 tab complete x2: footer present', fc_tab2 >= 1, f'{fc_tab2} footers'))
 
         # --- Cursor after Tab: Ctrl+L, 'u' types on same row as % ---
+        # NOTE: the first Ctrl+L may be swallowed by a "do you wish" y/n
+        # question (130 matches under /tm), so the prompt row is only
+        # guaranteed in the full-session replay.
         os.write(fd, b'\x0c')
         time.sleep(0.3)
-        out_redraw_tab = read_all(fd, 0.2)
+        read_all(fd, 0.2)
         os.write(fd, b'u')
         time.sleep(0.2)
-        outu = out_redraw_tab + read_all(fd, 0.2)
+        read_all(fd, 0.2)
         term = MiniTerm(80, 10)
-        term.feed(outu)
+        term.feed(_session['data'])
         u_pos = term.find_text('u')
-        pct_pos_tab = term.find_text('%')
+        # prefer the % on the u row (active prompt); a stale % may linger
+        # on an earlier row (prompt redraw artifact)
+        pct_pos_tab = None
+        if u_pos:
+            c = term.display[u_pos[0]].find('%')
+            if c >= 0:
+                pct_pos_tab = (u_pos[0], c)
+        if pct_pos_tab is None:
+            pct_pos_tab = term.find_text('%')
         if u_pos and pct_pos_tab and u_pos[0] == pct_pos_tab[0]:
             results.append(('013 cursor on prompt row after tab', True,
                 f'u at row {u_pos[0]}, % at row {pct_pos_tab[0]}'))
@@ -430,10 +500,22 @@ def run():
         inc_890 = b'234567890' in clean
         results.append(('014 history accept: completes echo 1234567890', inc_890,
             f'clean: {clean[-30:]!r}'))
-        # After accept, footer should still be present (dir=135, branch=88)
-        accept_footer = b'38;5;135' in out_accept and b'38;5;88' in out_accept
-        results.append(('014c history accept: footer present (dir 135, branch 88)', accept_footer,
-            f'out: {out_accept[-120:]!r}'))
+        # After accept, footer should still be present (dir=135, branch=88).
+        # zle only emits screen diffs, so the colors appear in earlier bytes;
+        # check the final rendered screen via full-session replay.
+        term = MiniTerm(80, 10)
+        term.feed(_session['data'])
+        footer_ok = False
+        detail = 'no footer row'
+        for i in range(term.rows - 1, -1, -1):
+            line = term.display[i]
+            if line.strip():
+                if 'main' in line:
+                    bpos = line.find('main')
+                    footer_ok = term.fg_at(i, 0) == 135 and term.fg_at(i, bpos) == 88
+                    detail = f'row {i}: dir fg {term.fg_at(i, 0)}, main fg {term.fg_at(i, bpos)}'
+                break
+        results.append(('014c history accept: footer present (dir 135, branch 88)', footer_ok, detail))
         os.write(fd, b'\n')
         time.sleep(0.2)
         out_final = read_all(fd, 0.2)

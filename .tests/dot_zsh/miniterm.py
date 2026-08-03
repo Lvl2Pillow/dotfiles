@@ -195,7 +195,29 @@ class MiniTerm:
                         n2 = int(params_str) if params_str else 0
                         self._clear_line(n2)
                     elif cmd == 'J':
-                        self._grid = [[dict(self._empty) for _ in range(self.cols)] for _ in range(self.rows)]
+                        # ED: clear display. Mode 0 (default) = cursor to end
+                        # of screen, 1 = start to cursor, 2 = whole screen.
+                        # (zle emits plain ESC[J for clear-below; treating it
+                        # as a full wipe loses rows above the cursor.)
+                        mode = int(params_str) if params_str else 0
+                        if mode == 2:
+                            self._grid = [[dict(self._empty) for _ in range(self.cols)] for _ in range(self.rows)]
+                        else:
+                            for r in range(self.rows):
+                                if mode == 0:
+                                    if r < self.cursor_row:
+                                        continue
+                                    c0 = self.cursor_col if r == self.cursor_row else 0
+                                else:  # mode == 1
+                                    if r > self.cursor_row:
+                                        break
+                                    c0 = 0
+                                    if r == self.cursor_row:
+                                        for c in range(c0, self.cursor_col + 1):
+                                            self._grid[r][c] = dict(self._empty)
+                                        continue
+                                for c in range(c0, self.cols):
+                                    self._grid[r][c] = dict(self._empty)
                         self._invalidate_cache()
                     elif cmd == 'm':
                         self._apply_sgr(params_str)
